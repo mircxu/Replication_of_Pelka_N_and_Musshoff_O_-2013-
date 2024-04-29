@@ -32,4 +32,4 @@ historical_stations$bis_datum <- as.character(historical_stations$bis_datum)
 print(historical_stations)
 
 # Save the filtered data as an Excel file
-write.xlsx(historical_stations, "Historical_Stations_2006_Onwards12.xlsx", row.names = FALSE)
+write.xlsx(historical_stations, "Historical_Stations_2006_Onwards.xlsx", row.names = FALSE)
