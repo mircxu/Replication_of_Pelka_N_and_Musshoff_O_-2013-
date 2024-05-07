@@ -17,7 +17,6 @@ rm(myIndex, fileIndex, metaIndex) # clean up workspace
 dir <- "C:/Ana"
 
 # download the data:
-localfiles <- dataDWD(links[1:50], joinbf=TRUE, dir=dir, read=FALSE)
 readVars(localfiles[2]) # the columns TMK and RSK will be selected later
 # Examine data:
 dummy <- readDWD(localfiles[2])
