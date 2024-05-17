@@ -1,0 +1,21 @@
+# Read the data from the file
+data <- read.csv("C:/Thesis/Steps/allstations_temp.csv", header = TRUE)
+
+# Convert the date column to Date format
+data$date <- as.Date(data$date, format = "%d/%m/%Y")
+
+# Define a function to group data by month and sum up the values across columns
+aggregate_data <- function(df) {
+  month <- format(df$date, "%Y-%m")
+  # Replace NA values with 0
+  df[is.na(df)] <- 0
+  # Exclude the 'date' column from aggregation
+  result <- aggregate(. ~ month, data = df[, -1], sum)
+  return(result)
+}
+
+# Apply the function to the data
+monthly_sum <- aggregate_data(data)
+
+# Save the result as a new CSV file
+write.csv(monthly_sum, "monthly_sum.csv", row.names = FALSE)
