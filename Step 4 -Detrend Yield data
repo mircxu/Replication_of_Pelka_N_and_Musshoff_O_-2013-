@@ -8,7 +8,6 @@ library(dplyr)
 library(lme4)
 library(readr)
 
-# Replace 'path_to_your_file.csv' with the actual path to your data file
 data <- read_csv("C:/Thesis/Steps/Step 4 - De trend data/Finaldata.csv")
 
 # Display the first few rows of the data
