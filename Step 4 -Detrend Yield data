@@ -1,0 +1,52 @@
+install.packages("ggplot2")
+install.packages("dplyr")
+install.packages("lme4")
+install.packages("readr")
+
+library(ggplot2)
+library(dplyr)
+library(lme4)
+library(readr)
+
+# Replace 'path_to_your_file.csv' with the actual path to your data file
+data <- read_csv("C:/Thesis/Steps/Step 4 - De trend data/Finaldata.csv")
+
+# Display the first few rows of the data
+head(data)
+
+ggplot(data, aes(x = year, y = value, color = district)) +
+  geom_point() +
+  geom_line() +
+  ggtitle("Yield Data Over Time by District") +
+  xlab("Year") +
+  ylab("Yield")
+# Fit a linear mixed-effects model
+model <- lmer(value ~ year + (year | district), data = data)
+summary(model)
+
+# Extract fixed effect slope
+trend_slope <- fixef(model)["year"]
+cat("Overall trend slope (yield increase per year):", trend_slope, "\n")
+
+# Extract random effects
+district_trends <- ranef(model)$district
+district_trends$district <- rownames(district_trends)
+colnames(district_trends) <- c("Intercept", "Slope", "district")
+
+print(district_trends)
+
+# Merge the district-specific trends with the original data
+data <- data %>%
+  left_join(district_trends, by = "district") %>%
+  mutate(Yield_Detrended = value - (Slope * year + Intercept))
+
+# Display the first few rows of the adjusted data
+head(data)
+
+ggplot(data, aes(x = year, y = Yield_Detrended, color = district)) +
+  geom_point() +
+  geom_line() +
+  ggtitle("Detrended Yield Data by District") +
+  xlab("Year") +
+  ylab("Yield (Detrended)")
+
