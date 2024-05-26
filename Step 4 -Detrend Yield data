@@ -49,3 +49,5 @@ ggplot(data, aes(x = year, y = Yield_Detrended, color = district)) +
   xlab("Year") +
   ylab("Yield (Detrended)")
 
+# Save the data
+write_csv(data, "C:/Thesis/Steps/Step 4 - De trend data/DetrendedData.csv")
