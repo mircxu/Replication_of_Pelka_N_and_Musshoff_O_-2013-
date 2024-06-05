@@ -16,8 +16,9 @@ rm(myIndex, fileIndex, metaIndex) # clean up workspace
 # directory  to save the downloaded data
 dir <- "C:/Ana"
 
-# download the data:
-readVars(localfiles[2]) # the columns TMK and RSK will be selected later
+#  download the data:
+localfiles <- dataDWD(links, joinbf=TRUE, dir=dir, read=FALSE)
+readVars(localfiles[2]) # later we'll select the columns TMK and RSK
 # Examine data:
 dummy <- readDWD(localfiles[2])
 str(dummy) ; rm(dummy) # Note POSIXct column instead of date
