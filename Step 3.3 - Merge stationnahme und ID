@@ -6,19 +6,19 @@ library(openxlsx)
 if (!require(openxlsx)) install.packages("openxlsx", dependencies = TRUE)
 
 # Read Excel file
-Station IDs <- read_excel("Station IDs.xlsx")
+file1 <- read_excel("file1.xlsx")
 
 # Select only the columns needed: A (Stations_id), E (geoBreite), F (geoLaenge), and G (Stationsnahme)
-Station IDs_selected <- Station IDs[, c("Stations_id", "geoBreite", "geoLaenge", "Stationsnahme")]
+file1_selected <- file1[, c("Stations_id", "geoBreite", "geoLaenge", "Stationsnahme")]
 
 # If Stations_id is not already numeric or factor, convert it to numeric
-if (!is.numeric(Station IDs_selected$Stations_id) && !is.factor(Station IDs_selected$Stations_id)) {
-  Station IDs_selected$Stations_id <- as.numeric(Station IDs_selected$Stations_id)
+if (!is.numeric(file1_selected$Stations_id) && !is.factor(file1_selected$Stations_id)) {
+  file1_selected$Stations_id <- as.numeric(file1_selected$Stations_id)
 }
 
 # Rename the columns to match the desired output
-colnames(Station IDs_selected) <- c("Stations_id", "geoBreite", "geoLaenge", "Stationsnahme")
-head(Station IDs_selected)
+colnames(file1_selected) <- c("Stations_id", "geoBreite", "geoLaenge", "Stationsnahme")
+head(file1_selected)
 
 # Read the first two rows from allstations_rain.csv
 allstations_rain <- read.csv("allstations_rain.csv", header = FALSE)
@@ -44,7 +44,7 @@ if (!is.numeric(allstations_rain_transposed$date) && !is.factor(allstations_rain
 }
 
 # Merge based on station_id and date 
-merged_data <- merge(allstations_rain_transposed, Station IDs_selected, by.x = "date", by.y = "Stations_id", all.x = TRUE, all.y = FALSE)
+merged_data <- merge(allstations_rain_transposed, file1_selected, by.x = "date", by.y = "Stations_id", all.x = TRUE, all.y = FALSE)
 head(merged_data)
 
 # Copy values from geoBreite.y, geoLaenge.y, and Stationsnahme.y to their respective columns
