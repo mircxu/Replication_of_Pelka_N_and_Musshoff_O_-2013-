@@ -1,64 +1,65 @@
-# Load required library
+# Load required libraries
 library(readxl)
 library(openxlsx)
 
+# Install openxlsx if not already installed
+if (!require(openxlsx)) install.packages("openxlsx", dependencies = TRUE)
+
 # Read Excel file
-file1 <- read_excel("file1.xlsx")
+Station IDs <- read_excel("Station IDs.xlsx")
 
-# Select only columns A (station_id) and G (Stationsname)
-file1_selected <- file1[, c("Stations_id", "Stationsname")]
+# Select only the columns needed: A (Stations_id), E (geoBreite), F (geoLaenge), and G (Stationsnahme)
+Station IDs_selected <- Station IDs[, c("Stations_id", "geoBreite", "geoLaenge", "Stationsnahme")]
 
-# If station_id is not already numeric or factor, convert it to numeric
-if (!is.numeric(file1_selected$Stations_id) && !is.factor(file1_selected$Stations_id)) {
-  file1_selected$Stations_id <- as.numeric(file1_selected$Stations_id)
+# If Stations_id is not already numeric or factor, convert it to numeric
+if (!is.numeric(Station IDs_selected$Stations_id) && !is.factor(Station IDs_selected$Stations_id)) {
+  Station IDs_selected$Stations_id <- as.numeric(Station IDs_selected$Stations_id)
 }
 
 # Rename the columns to match the desired output
-colnames(file1_selected) <- c("Stations_id", "Stationsname")
-head(file1_selected)
+colnames(Station IDs_selected) <- c("Stations_id", "geoBreite", "geoLaenge", "Stationsnahme")
+head(Station IDs_selected)
 
-
-# Read the first two rows from file2.csv
-file2 <- read.csv("file2.csv", header = FALSE)
-head(file2)
+# Read the first two rows from allstations_rain.csv
+allstations_rain <- read.csv("allstations_rain.csv", header = FALSE)
+head(allstations_rain)
 
 # Transpose the dataframe
-file2_transposed <- t(file2)
+allstations_rain_transposed <- t(allstations_rain)
 
 # Convert to a dataframe
-file2_transposed <- as.data.frame(file2_transposed)
-head(file2_transposed)
+allstations_rain_transposed <- as.data.frame(allstations_rain_transposed)
+head(allstations_rain_transposed)
 
 # Set the first row as column names
-colnames(file2_transposed) <- file2_transposed[1, ]
+colnames(allstations_rain_transposed) <- allstations_rain_transposed[1, ]
 
 # Remove the first row
-file2_transposed <- file2_transposed[-1, ]
-head(file2_transposed)
+allstations_rain_transposed <- allstations_rain_transposed[-1, ]
+head(allstations_rain_transposed)
 
-# If station_id is not already numeric or factor, convert it to numeric
-if (!is.numeric(file2_transposed$date) && !is.factor(file2_transposed$date)) {
-  file2_transposed$date <- as.numeric(file2_transposed$date)
+# If date is not already numeric or factor, convert it to numeric
+if (!is.numeric(allstations_rain_transposed$date) && !is.factor(allstations_rain_transposed$date)) {
+  allstations_rain_transposed$date <- as.numeric(allstations_rain_transposed$date)
 }
 
-
-
 # Merge based on station_id and date 
-merged_data <- merge(file2_transposed, file1_selected , by.x = "date", by.y = "Stations_id", all.x = TRUE, all.y = FALSE)
+merged_data <- merge(allstations_rain_transposed, Station IDs_selected, by.x = "date", by.y = "Stations_id", all.x = TRUE, all.y = FALSE)
 head(merged_data)
 
-# Copy values from Stationsname.y to Stationsname.x
-merged_data$Stationsname.x <- merged_data$Stationsname.y
+# Copy values from geoBreite.y, geoLaenge.y, and Stationsnahme.y to their respective columns
+merged_data$geoBreite.x <- merged_data$geoBreite.y
+merged_data$geoLaenge.x <- merged_data$geoLaenge.y
+merged_data$Stationsnahme.x <- merged_data$Stationsnahme.y
 
-# Drop the 'Stationsname.y' and 'Stations_id' column from file2_transposed in merged data
-merged_data <- merged_data[, !(names(merged_data) %in% "Stationsname.y")]
-merged_data <- merged_data[, !(names(merged_data) %in% "Stations_id")]
+# Drop the '.y' columns and 'Stations_id' from merged data
+merged_data <- merged_data[, !(names(merged_data) %in% c("geoBreite.y", "geoLaenge.y", "Stationsnahme.y", "Stations_id"))]
 
 # Rename columns in merged data
-names(merged_data)[which(names(merged_data) == "Stationsname.x")] <- "Stationsname"
+names(merged_data)[which(names(merged_data) == "geoBreite.x")] <- "geoBreite"
+names(merged_data)[which(names(merged_data) == "geoLaenge.x")] <- "geoLaenge"
+names(merged_data)[which(names(merged_data) == "Stationsnahme.x")] <- "Stationsnahme"
 names(merged_data)[which(names(merged_data) == "date")] <- "Stations_id"
-
-
 
 # Create a data frame with the result
 result <- data.frame(merged_data)
@@ -76,9 +77,7 @@ fin_data <- as.data.frame(transposed_data)
 # Remove 'x' character from row names
 rownames(fin_data) <- gsub("X", "", rownames(fin_data))
 
-
 head(fin_data)
 
-
 # Save the modified data as CSV
-write.csv(fin_data, file = "file2_upd.csv", row.names = TRUE)
+write.csv(fin_data, file = "allstations_rain_merged.csv", row.names = TRUE)
