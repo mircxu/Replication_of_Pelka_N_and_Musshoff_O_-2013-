@@ -3,7 +3,7 @@ library(dplyr)
 library(readr)
 
 # Read the temperature data and preprocess it
-temp_df <- read_csv("C:/Ana/Steps/Step 5 - define accumulation indices/monthly_sum_temp.csv")
+temp_df <- read_csv("C:/Ana/Steps/Step 6 - define accumulation indices/monthly_sum_temp.csv")
 temp_df$month <- as.Date(paste0(temp_df$month, "-01"), format = "%Y-%m-%d")  # Convert month to Date format
 temp_df$Year <- format(temp_df$month, "%Y")  # Extract year from month
 
@@ -14,7 +14,7 @@ temp_mar_apr <- temp_df %>%
   summarize(Temp_Accumulation = sum(across(starts_with("temp")), na.rm = TRUE))  # Calculate sum of temperatures
 
 # Read the rainfall data and preprocess it
-rain_df <- read.csv("C:/Ana/Steps/Step 5 - define accumulation indices/monthly_sum_rain.csv")
+rain_df <- read.csv("C:/Ana/Steps/Step 6 - define accumulation indices/monthly_sum_rain.csv")
 rain_df$month <- as.Date(paste0(rain_df$month, "-01"), format = "%Y-%m-%d")  # Convert month to Date format
 rain_df$Year <- format(rain_df$month, "%Y")  # Extract year from month
 
