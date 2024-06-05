@@ -1,0 +1,11 @@
+# Read the CSV file into a data frame
+data <- read.csv("allstations_rain_merged.csv")
+
+# Identify columns with NA values
+na_columns <- colnames(data)[colSums(is.na(data)) > 0]
+
+# Remove columns with NA values
+cleaned_data <- data[, !(names(data) %in% na_columns)]
+
+# Write the cleaned data to a new CSV file
+write.csv(cleaned_data, file = "cleaned_allstations_rain.csv", row.names = FALSE)
