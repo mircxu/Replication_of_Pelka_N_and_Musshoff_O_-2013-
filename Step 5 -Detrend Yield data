@@ -8,7 +8,7 @@ library(dplyr)
 library(lme4)
 library(readr)
 
-data <- read_csv("C:/Thesis/Steps/Step 5 - De trend data/Finaldata.csv")
+data <- read_csv('data/Finaldata.csv")
 
 # Display the first few rows of the data
 head(data)
