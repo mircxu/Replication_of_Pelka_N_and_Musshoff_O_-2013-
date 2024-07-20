@@ -1,0 +1,24 @@
+# Extract Station ID
+i <- 1
+stations_df <- final_data %>% 
+  select(district_no, geo_point_lang, geo_point_latd) %>% 
+  rename(lon_ = geo_point_lang,
+         lat_ = geo_point_latd,
+         statname_ = district_no) %>%
+  distinct() %>% 
+  #slice(1:20) %>% 
+  as.list() %>% 
+  pmap(get_station_id) %>% 
+  do.call(what = bind_rows) %>% 
+  tibble() 
+
+stations_df
+
+final_data %>% 
+  select(district_no,state) %>% 
+  distinct()
+
+stations_df %>% 
+  select(-c(res,var,per,dist, von_datum, bis_datum)) %>% 
+  right_join(final_data %>% select(district_no,state) %>% distinct(),
+             by=c('kreis_code_in'='district_no')) %>% write_csv('stations_df.csv')
