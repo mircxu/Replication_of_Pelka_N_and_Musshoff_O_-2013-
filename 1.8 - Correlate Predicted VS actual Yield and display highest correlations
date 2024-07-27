@@ -1,0 +1,47 @@
+# Load necessary libraries
+library(randomForest)
+library(caret)
+
+# Load the data
+data <- read.csv('final_merged_data_with_predictions.csv')
+# Function to calculate correlation safely
+safe_correlation <- function(yield, predicted_yield) {
+  if (sum(!is.na(yield) & !is.na(predicted_yield)) > 1) {
+    return(cor(yield, predicted_yield, use = "complete.obs"))
+  } else {
+    return(NA_real_)
+  }
+}
+
+# Group by 'district_no' and 'Correlation' and calculate correlations
+correlation_results <- data %>%
+  group_by(district_no, Correlation) %>%
+  summarize(Correlation_Value = safe_correlation(Yield, Predicted_Yield)) %>%
+  filter(!is.na(Correlation_Value))
+
+# Display the correlation results
+print(correlation_results)
+# Save the correlation results to a CSV file
+write.csv(correlation_results, 'correlation_results.csv', row.names = FALSE)
+
+# Load the data
+data <- read.csv('correlation_results.csv')
+
+# Load the CSV file
+file_path <- "correlation_results.csv"  
+df <- read.csv(file_path)
+
+# Convert the 'Correlation_Value' to absolute values
+df$Absolute_Correlation_Value <- abs(df$Correlation_Value)
+
+# Find the highest absolute correlation value for each district_no
+max_abs_corr_per_district <- df %>%
+  group_by(district_no) %>%
+  slice(which.max(Absolute_Correlation_Value))
+
+# Display the results
+print(max_abs_corr_per_district)
+
+# Optionally, save the results to a new CSV file
+output_file_path <- "highest_absolute_correlations_by_district.csv"  
+write.csv(max_abs_corr_per_district, output_file_path, row.names = FALSE)
