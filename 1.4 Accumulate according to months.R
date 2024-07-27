@@ -62,8 +62,8 @@ for (period in names(periods)) {
 }
 
 # Remove "X_" from column names if present
-colnames(all_temp_results) <- gsub("^X_", "", colnames(all_temp_results))
-colnames(all_rain_results) <- gsub("^X_", "", colnames(all_rain_results))
+colnames(all_temp_results) <- gsub("^X", "", colnames(all_temp_results))
+colnames(all_rain_results) <- gsub("^X", "", colnames(all_rain_results))
 
 # Write the combined results to single CSV files
 write.csv(all_temp_results, "all_temp_results.csv", row.names = FALSE)
