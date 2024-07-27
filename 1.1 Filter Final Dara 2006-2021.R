@@ -12,14 +12,23 @@ filtered_data <- data %>%
   # Filter for specific 'var' and 'measure'
   filter(var == 'ww' & measure == 'yield') %>%
   # Remove rows with NA values in important columns (adjust if necessary)
-  drop_na(value) %>%
+  filter(!is.na(value)) %>%
   # Group by district
   group_by(district) %>%
   # Filter districts with data for all required years
   filter(all(required_years %in% year)) %>%
   ungroup() %>%
   # Ensure data includes only rows from required years
-  filter(year %in% required_years)
+  filter(year %in% required_years) %>%
+  # Multiply values by 10
+  mutate(value = value * 10)
+
+# Check if the 'outlier' column exists and if all its values are 0
+if ("outlier" %in% colnames(filtered_data)) {
+  if (all(filtered_data$outlier == 0)) {
+    filtered_data <- filtered_data %>% select(-outlier)
+  }
+}
 
 # Write the filtered data to a new CSV file
 write.csv(filtered_data, "filtered_data.csv", row.names = FALSE)
