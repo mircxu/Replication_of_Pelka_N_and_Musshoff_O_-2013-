@@ -16,11 +16,6 @@ merged_df <- data_df %>%
   left_join(nearest_stations_df %>% select(kreis_code_in, stations_id, geobreite, geolaenge), 
             by = c("district_no" = "kreis_code_in"))
 
-# Remove 'outlier' column if all values are 0
-if(all(merged_df$outlier == 0)) {
-  merged_df <- merged_df %>% select(-outlier)
-}
-
 # Convert 'stations_id' to integer to remove the '.0'
 merged_df$stations_id <- as.integer(merged_df$stations_id)
 
