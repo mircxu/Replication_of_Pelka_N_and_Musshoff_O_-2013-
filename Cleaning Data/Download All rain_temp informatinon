@@ -1,0 +1,60 @@
+library(rdwd)
+updateRdwd()
+data("metaIndex")
+data("fileIndex")
+myIndex <- metaIndex[
+  metaIndex$von_datum <= as.Date("2006-01-01") &
+  metaIndex$bis_datum >= as.Date("2021-12-31") & metaIndex$hasfile,  ]
+links <- fileIndex[
+  fileIndex$id %in% myIndex$Stations_id &
+  fileIndex$res=="daily" &
+  fileIndex$var=="kl" &
+  fileIndex$per=="historical"         , "path" ]
+length(links) # 591 stations
+rm(myIndex, fileIndex, metaIndex) # clean up workspace
+
+# directory  to save the downloaded data
+dir <- "C:/Ana"
+
+#  download the data:
+localfiles <- dataDWD(links, joinbf=TRUE, dir=dir, read=FALSE)
+readVars(localfiles[2]) # later we'll select the columns TMK and RSK
+# Examine data:
+dummy <- readDWD(localfiles[2])
+str(dummy) ; rm(dummy) # Note POSIXct column instead of date
+
+#read data from a file for the years 2006-2021
+read2006_2021 <- function(file, ...) {
+  out <- rdwd::readDWD(file, ...) # explicit package name to later parallize this
+  out$MESS_DATUM <- as.Date(out$MESS_DATUM)
+  out <- out[out$MESS_DATUM >= as.Date("2006-01-01") & 
+             out$MESS_DATUM <= as.Date("2021-12-31"), ]
+  id <- out$STATIONS_ID[1]
+  out <- out[, c("MESS_DATUM", "RSK", "TMK")]
+  colnames(out) <- c("date",  paste0(c("rain_", "temp_"),id))
+  return(out)
+}
+# test usage file:
+dummy <- read2006_2021(localfiles[2])
+str(dummy) ; rm(dummy)
+# Read data from all files, Utilize parallel processing across
+rain_temp_list <- berryFunctions::par_sapply(localfiles, read2006_2021, simplify=FALSE)
+# Combine all data in one:
+rain_temp_df <- Reduce(function(...) merge(..., all=TRUE), rain_temp_list)
+
+sort(colSums(is.na(rain_temp_df)))
+# remove stations without known values:
+rain_temp_df <- rain_temp_df[,colSums(is.na(rain_temp_df)) != nrow(rain_temp_df)]
+
+# split into separate dfs:
+rain_df <- rain_temp_df[,grepl("(date)|(rain)", colnames(rain_temp_df))]
+temp_df <- rain_temp_df[,grepl("(date)|(temp)", colnames(rain_temp_df))]
+colnames(rain_df) <- sub("rain_","",colnames(rain_df))
+colnames(temp_df) <- sub("rain_","",colnames(temp_df))
+
+# Write data to csv file:
+write.csv(rain_df, file="allstations_rain.csv", quote=FALSE, row.names=FALSE)
+write.csv(temp_df, file="allstations_temp.csv", quote=FALSE, row.names=FALSE)
+berryFunctions::openFile("allstations_rain.csv")
+# unlink("allstations_rain.csv")
+# unlink("allstations_temp.csv")
