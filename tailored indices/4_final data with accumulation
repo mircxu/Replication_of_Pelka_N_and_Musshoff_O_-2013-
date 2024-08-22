@@ -1,0 +1,24 @@
+# Load necessary library
+library(dplyr)
+
+# Load the datasets
+best_corr <- read.csv('best_corr_per_district.csv')
+final_merged_data <- read.csv('final_merged_data.csv')
+
+# Merging the datasets to filter based on district_no and accumulation_period
+filtered_data <- final_merged_data %>%
+  inner_join(best_corr, by = c("district_no" = "district_no", "Correlation" = "accumulation_period"))
+
+# Check the names of the columns in filtered_data to ensure we are removing the correct ones
+column_names <- names(filtered_data)
+
+# If 'accumulation_period' and 'corrcoef_' exist, then drop them
+if ("accumulation_period" %in% column_names) {
+  filtered_data <- filtered_data %>% select(-accumulation_period)
+}
+if ("corrcoef_" %in% column_names) {
+  filtered_data <- filtered_data %>% select(-corrcoef_)
+}
+
+# Saving the filtered dataset to a CSV file
+write.csv(filtered_data, 'final_filtered_data_accumulation.csv', row.names = FALSE)
