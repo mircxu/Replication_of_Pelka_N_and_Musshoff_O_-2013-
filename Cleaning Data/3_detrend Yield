@@ -52,4 +52,4 @@ cat("The farms analyzed indicate an average yield increase of", round(average_sl
 cat("We did not identify any significant trends in the weather data.\n")
 
 # Save the de-trended data to a new CSV file without altering the original structure
-write_csv(data_ww, "detrended_data_2021.csv")
+write_csv(data_ww, "filtered_data_detrended.csv")
