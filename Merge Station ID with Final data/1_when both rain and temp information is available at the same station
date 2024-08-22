@@ -65,5 +65,5 @@ merged_df$stations_id <- as.integer(merged_df$stations_id)
 # Save the updated dataframe to a new CSV file
 write.csv(merged_df, 'final_data_with_station_IDs.csv', row.names = FALSE)
 
-# Display the merged dataframe to the user (optional, for your reference)
+# Display the merged dataframe to the user 
 print(head(merged_df))
