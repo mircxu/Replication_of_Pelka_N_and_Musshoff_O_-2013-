@@ -144,3 +144,30 @@ print(best_corr_per_district)
 
 # Save the best correlations to a CSV file
 write.csv(best_corr_per_district, 'best_corr_per_district.csv', row.names = FALSE)
+df_chosen_acc <- df_corr %>% group_split(district_no) %>% 
+  map(~ .x %>% arrange(desc(corrcoef_)) %>% slice(1)) %>% 
+  do.call(what=bind_rows) %>% 
+  select(-corrcoef_)
+
+
+df_chosen_acc <- df_chosen_acc %>% 
+  left_join(df, by=c('district_no','accumulation_period'))
+
+
+df_chosen_acc_with_pred <- df_chosen_acc %>% 
+  tibble() %>%
+  inner_join(models_stations_wider, by=c("district_no", "accumulation_period")) %>% 
+  mutate(
+    IR_t_squared = IR_t^2,
+    IT_t_squared = IT_t^2,
+    IR_t_IT_t = IR_t * IT_t,
+    prediction = Intercept_coef +
+      IR_t_coef * IR_t +
+      IT_t_coef * IT_t +
+      IR_t_squared_coef * IR_t_squared +
+      IT_t_squared_coef * IT_t_squared +
+      IR_t_IT_t_coef * IR_t_IT_t
+  ) %>% 
+  select(district_no:IT_t, prediction)
+
+write.csv(df_chosen_acc_with_pred, 'district_wi.csv', row.names=FALSE)
