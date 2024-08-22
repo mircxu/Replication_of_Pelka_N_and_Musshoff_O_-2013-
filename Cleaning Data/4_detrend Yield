@@ -3,7 +3,7 @@ library(dplyr)
 library(readr)
 
 # Load the data
-data <- read_csv("filtered_data.csv")
+data <- read_csv("filtered_data_raw.csv")
 
 # Filter data for winter wheat (ww)
 data_ww <- data %>% filter(var == "ww")
@@ -53,3 +53,15 @@ cat("We did not identify any significant trends in the weather data.\n")
 
 # Save the de-trended data to a new CSV file without altering the original structure
 write_csv(data_ww, "filtered_data_detrended.csv")
+
+# Remove the 'value' and 'slope' columns and rename 'Yield_Detrended_2021' to 'value'
+data_ww_final <- data_ww %>%
+  select(-value, -slope) %>%
+  rename(value = Yield_Detrended_2021)
+
+# Save the final de-trended data
+write_csv(data_ww_final, "filtered_data_final.csv")
+
+# Calculate and print the number of unique values in the 'district_no' column
+unique_district_no <- n_distinct(data_ww_final$district_no)
+cat("The number of unique district_no values is:", unique_district_no, "\n")
