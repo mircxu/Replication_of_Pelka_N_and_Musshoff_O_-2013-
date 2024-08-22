@@ -37,7 +37,7 @@ ci_up <- quantile(bootstrap_results$t, ci_level + beta)
 cat("Bootstrap Mean:", fair_premium, "\n")
 cat(ci_level * 100, "% Confidence Interval:", ci_lo, ci_up, "\n")
 
-##### Calculating z and Revenue #####
+#####Z - optimal number of insurance #####
 # Define the function to calculate z
 calc_revenue <- function(df_){
   cov_ <- cov(df_$yt_price, df_$n_mixed)
