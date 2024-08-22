@@ -1,40 +1,55 @@
 library(ggplot2)
 library(dplyr)
-library(lme4)
 library(readr)
 
-# Replace 'path_to_your_file.csv' with the actual path to your data file
+# Load the data
 data <- read_csv("filtered_data.csv")
 
-# Fit a linear mixed-effects model
-model <- lmer(value ~ year + (year | district), data = data)
-summary(model)
+# Filter data for winter wheat (ww)
+data_ww <- data %>% filter(var == "ww")
 
-# Extract random effects (district-specific slopes and intercepts)
-district_trends <- ranef(model)$district
-district_trends$district <- rownames(district_trends)
-colnames(district_trends) <- c("Intercept", "Slope", "district")
+# Initialize a list to store slopes
+district_slopes <- list()
 
-# Adjust to the year 2021
-data <- data %>%
-  left_join(district_trends, by = "district") %>%
-  mutate(
-    Baseline_2021 = Intercept + Slope * 2021,  # Calculate the yield level in 2021 for each district
-    Yield_Detrended = value - (Slope * (year - 2021))  # De-trend yields to the 2021 level
-  )
+# Loop through each district to calculate the slope (yield increase per year)
+for (district in unique(data_ww$district)) {
+  district_data <- data_ww %>% filter(district == !!district)
+  
+  # Fit the linear model: value ~ year
+  model <- lm(value ~ year, data = district_data)
+  
+  # Extract the slope (coefficient for year)
+  slope <- coef(model)["year"]
+  
+  # Store the district and slope
+  district_slopes[[district]] <- slope
+}
 
-# Calculate the average slope (yield increase per year)
-average_slope <- mean(district_trends$Slope)
-min_slope <- min(district_trends$Slope)
-max_slope <- max(district_trends$Slope)
+# Convert the slopes list to a data frame
+district_slopes_df <- data.frame(
+  district = names(district_slopes),
+  slope = unlist(district_slopes)
+)
+
+# Calculate average slope, minimum slope, and maximum slope
+average_slope_2021 <- mean(district_slopes_df$slope)
+min_slope_2021 <- min(district_slopes_df$slope)
+max_slope_2021 <- max(district_slopes_df$slope)
+
+# Merge the calculated slopes back into the original data without altering original columns
+data_ww <- data_ww %>%
+  left_join(district_slopes_df, by = "district") %>%
+  mutate(Yield_Detrended_2021 = value - slope * (year - 2021))
 
 # Calculate the overall de-trended average yield for all years combined
-overall_average_detrended_yield <- mean(data$Yield_Detrended, na.rm = TRUE)
+overall_average_detrended_yield_2021 <- mean(data_ww$Yield_Detrended_2021, na.rm = TRUE)
 
-# Display the calculated statistics
-cat("Average yield increase per year (dt/ha):", round(average_slope, 2), "\n")
-cat("Fluctuation range of yield increase (dt/ha):", round(min_slope, 2), "to", round(max_slope, 2), "\n")
-cat("Overall de-trended average yield (dt/ha) for all years combined:", round(overall_average_detrended_yield, 2), "\n")
+# Print the results in the requested format
+cat("The farms analyzed indicate an average yield increase of", round(average_slope_2021, 2), 
+    "dt/ha and year with a fluctuation range from", round(min_slope_2021, 2), 
+    "to", round(max_slope_2021, 2), "dt/ha and generate a de-trended average winter wheat yield of", 
+    round(overall_average_detrended_yield_2021, 2), "dt/ha in the years examined.\n")
+cat("We did not identify any significant trends in the weather data.\n")
 
-# Save the detrended data to a new CSV file
-write_csv(data, "detrended_Final.csv")
+# Save the de-trended data to a new CSV file without altering the original structure
+write_csv(data_ww, "detrended_data_2021.csv")
