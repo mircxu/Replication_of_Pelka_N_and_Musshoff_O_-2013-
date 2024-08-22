@@ -65,3 +65,22 @@ write_csv(data_ww_final, "filtered_data_final.csv")
 # Calculate and print the number of unique values in the 'district_no' column
 unique_district_no <- n_distinct(data_ww_final$district_no)
 cat("The number of unique district_no values is:", unique_district_no, "\n")
+
+##### Add Summary Statistics #####
+
+# Calculate summary statistics by district_no
+summary_table <- data_ww_final %>%
+  group_by(district) %>%
+  summarise(
+    Average_Yield = mean(value, na.rm = TRUE),
+    Minimum_Yield = min(value, na.rm = TRUE),
+    Maximum_Yield = max(value, na.rm = TRUE),
+    SD_Yield = sd(value, na.rm = TRUE)
+  )
+
+# Print the summary table
+cat("Summary statistics for de-trended yields by district:\n")
+print(summary_table)
+
+# Save the summary statistics to a CSV file
+write_csv(summary_table, "summary_statistics_detrended_yields.csv")
