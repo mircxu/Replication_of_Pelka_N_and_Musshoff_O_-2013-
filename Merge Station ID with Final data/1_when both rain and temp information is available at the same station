@@ -5,30 +5,29 @@ library(readr)
 allstations_temp <- read_csv("allstations_temp.csv")
 allstations_rain <- read_csv("allstations_rain.csv")
 
-# Step 2: Extract station IDs from the temperature and rainfall data
+# Extract station IDs from the temperature and rainfall data
 temp_station_ids <- colnames(allstations_temp)[-1]  # Exclude the date column
 rain_station_ids <- colnames(allstations_rain)[-1]  # Exclude the date column
 
-# Step 3: Combine and summarize station IDs
+# Combine and summarize station IDs
 all_station_ids <- unique(c(temp_station_ids, rain_station_ids))
 
-# Step 4: Create a data frame for summary
+#  Create a data frame for summary
 station_summary <- data.frame(
   Station_ID = all_station_ids,
   In_Temperature = all_station_ids %in% temp_station_ids,
   In_Rainfall = all_station_ids %in% rain_station_ids
 )
 
-# Step 5: Save the general summary information to a CSV file
+# Save the general summary information to a CSV file
 write_csv(station_summary, "station_summary_all.csv")
 
-# Step 6: Filter the summary to include only stations with both In_Temperature and In_Rainfall as TRUE
+#  Filter the summary to include only stations with both In_Temperature and In_Rainfall as TRUE
 filtered_station_summary <- station_summary %>%
   filter(In_Temperature == TRUE, In_Rainfall == TRUE)
 
-# Step 7: Save the filtered summary to a CSV file
+#  Save the filtered summary to a CSV file
 write_csv(filtered_station_summary, "station_summary.csv")
-
 
 # Keave just Stations that are in both files
 station_summary <- read.csv("station_summary.csv")
@@ -40,9 +39,6 @@ filtered_stations_df <- stations_df_all %>%
 
 # Save the filtered dataframe to a new CSV file
 write.csv(filtered_stations_df, "filtered_stations_df_all.csv", row.names = FALSE)
-
-# Load necessary libraries
-library(dplyr)
 
 # Load the CSV files
 stations_df <- read.csv('filtered_stations_df_all.csv')
