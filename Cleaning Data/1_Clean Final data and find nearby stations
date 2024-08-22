@@ -6,7 +6,7 @@ library(rdwd)
 library(berryFunctions)
 
 # Importing data
-geo_data_raw <- read_excel('data/georeferencedata.xlsx')
+geo_data_raw <- read_excel('georeferencedata.xlsx')
 final_data_raw <- read.csv('Final_data.csv')
 
 # Preparing Geo Data
@@ -23,20 +23,31 @@ geo_data <- geo_data_raw %>%
   unnest(cols = c('geo_point_lang', 'geo_point_latd')) %>%
   select(-geo_point)
 
+# Read the CSV file
+data <- read.csv("Final_data.csv")
+
 # Define the range of years we are interested in
 required_years <- 2006:2021
 
-# Extract districts with complete data from 2006 to 2021
-final_data_no_gap <- final_data_raw %>%
-  filter(year %in% required_years & var == 'ww' & measure == 'yield') %>%
+# Filter districts with complete data from 2006 to 2021
+filtered_data <- data %>%
+  # Filter for specific 'var' and 'measure'
+  filter(var == 'ww' & measure == 'yield') %>%
+  # Remove rows with NA values in important columns 
   drop_na(value) %>%
-  select(district_no, year) %>%
-  distinct() %>%
-  group_by(district_no) %>%
-  summarise(has_year_gap = ifelse(all(required_years %in% year), 1, 0)) %>%
+  # Group by district
+  group_by(district) %>%
+  # Filter districts with data for all required years
+  filter(all(required_years %in% year)) %>%
   ungroup() %>%
-  filter(has_year_gap == 1) %>%
-  pull(district_no)
+  # Ensure data includes only rows from required years
+  filter(year %in% required_years) %>%
+  # Multiply values by 10
+  mutate(value = value * 10)
+
+# Write the filtered data to a new CSV file
+write.csv(filtered_data, "filtered_data.csv", row.names = FALSE)
+
 
 # Apply all exclusion rules and process data
 final_data <- final_data_raw %>%
@@ -54,7 +65,7 @@ final_data <- final_data_raw %>%
 write.csv(final_data, "Final_data_Station.csv", row.names = FALSE)
 
 # Define the function to get the nearest station (Ensure nearbyStations() exists)
-get_station_id <- function(lat_, lon_, statname_, radius_ = 30) {
+get_station_id <- function(lat_, lon_, statname_, radius_ = 100) {
   print(i)
   i <<- i + 1
   
