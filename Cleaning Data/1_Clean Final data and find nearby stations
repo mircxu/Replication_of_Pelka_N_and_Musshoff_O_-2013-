@@ -7,12 +7,6 @@ library(rdwd)
 # Importing data
 final_data_raw <- read.csv('Final_data.csv')
 
-library(tidyverse)
-library(purrr)
-library(readxl)
-library(lubridate)
-library(rdwd)
-
 # Define the range of years we are interested in
 required_years <- 2006:2021
 
