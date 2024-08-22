@@ -1,0 +1,35 @@
+library(tidyverse)
+
+# Load data
+district_wi <- read_csv('district_wi.csv')
+
+# Calculate the district-level strike levels for the mixed index, temperature index, and rainfall index
+district_wi <- district_wi %>%
+  group_by(district_no) %>%
+  mutate(
+    strike_level_mixed = mean(prediction, na.rm = TRUE),  # Strike level for mixed index
+    strike_level_IT = mean(IT_t, na.rm = TRUE),           # Strike level for temperature index
+    strike_level_IR = mean(IR_t, na.rm = TRUE)            # Strike level for rainfall index
+  ) %>%
+  ungroup()
+
+# Calculate the put and call option payouts for mixed index, IT, and IR indices
+df_deriv_dist <- district_wi %>%
+  rowwise() %>%
+  mutate(
+    n_put_IT = max(strike_level_IT - IT_t, 0),    # Put option payout for temperature index
+    n_call_IT = max(IT_t - strike_level_IT, 0),   # Call option payout for temperature index
+    n_put_IR = max(strike_level_IR - IR_t, 0),    # Put option payout for rainfall index
+    n_call_IR = max(IR_t - strike_level_IR, 0),   # Call option payout for rainfall index
+    n_put_mixed = max(strike_level_mixed - prediction, 0),   # Put option payout for mixed index
+    n_call_mixed = max(prediction - strike_level_mixed, 0),  # Call option payout for mixed index
+    n_IT = if_else(strike_level_IT - IT_t >= 0, n_put_IT, n_call_IT),  # Combined n for temperature
+    n_IR = if_else(strike_level_IR - IR_t >= 0, n_put_IR, n_call_IR),  # Combined n for rainfall
+    n_mixed = if_else(strike_level_mixed - prediction >= 0, n_put_mixed, n_call_mixed) # Combined n for mixed index
+  )
+
+# Save the results
+write_csv(df_deriv_dist, 'tailored_options.csv')
+
+# Optionally, display the first few rows of the result
+print(head(df_deriv_dist))
