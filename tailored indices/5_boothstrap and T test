@@ -37,7 +37,7 @@ ci_up <- quantile(bootstrap_results$t, ci_level + beta)
 cat("Bootstrap Mean:", fair_premium, "\n")
 cat(ci_level * 100, "% Confidence Interval:", ci_lo, ci_up, "\n")
 
-#####Z - optimal number of insurance #####
+##### Calculating z and Revenue #####
 # Define the function to calculate z
 calc_revenue <- function(df_){
   cov_ <- cov(df_$yt_price, df_$n_mixed)
@@ -85,3 +85,27 @@ print(t_test_results)
 ##### Save the Results #####
 # Save the results to a CSV file
 df_deriv_dist %>% write_csv('deriv_dist_fair_premium.csv')
+
+
+# Load necessary libraries
+library(tidyverse)
+
+# Assuming df_deriv_dist is already loaded and contains the required data
+
+# Calculate summary statistics by district_no
+summary_table <- df_deriv_dist %>%
+  group_by(district_no) %>%
+  summarise(
+    Average = mean(n_mixed, na.rm = TRUE),
+    Minimum = min(n_mixed, na.rm = TRUE),
+    Maximum = max(n_mixed, na.rm = TRUE),
+    SD = sd(n_mixed, na.rm = TRUE)
+  ) %>%
+  rename(`Kreis Code` = district_no,
+         `Average (%)` = Average,
+         `Minimum (%)` = Minimum,
+         `Maximum (%)` = Maximum,
+         `SD (%)` = SD)
+
+# Display the summary table
+print(summary_table)
