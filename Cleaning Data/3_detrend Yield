@@ -10,29 +10,31 @@ data <- read_csv("filtered_data.csv")
 model <- lmer(value ~ year + (year | district), data = data)
 summary(model)
 
-# Extract random effects
+# Extract random effects (district-specific slopes and intercepts)
 district_trends <- ranef(model)$district
 district_trends$district <- rownames(district_trends)
 colnames(district_trends) <- c("Intercept", "Slope", "district")
 
-# Merge the district-specific trends with the original data
+# Adjust to the year 2021
 data <- data %>%
   left_join(district_trends, by = "district") %>%
-  mutate(Yield_Detrended = value - (Slope * year + Intercept))
+  mutate(
+    Baseline_2021 = Intercept + Slope * 2021,  # Calculate the yield level in 2021 for each district
+    Yield_Detrended = value - (Slope * (year - 2021))  # De-trend yields to the 2021 level
+  )
 
-# Display the first few rows of the adjusted data
-head(data)
+# Calculate the average slope (yield increase per year)
+average_slope <- mean(district_trends$Slope)
+min_slope <- min(district_trends$Slope)
+max_slope <- max(district_trends$Slope)
+
+# Calculate the overall de-trended average yield for all years combined
+overall_average_detrended_yield <- mean(data$Yield_Detrended, na.rm = TRUE)
+
+# Display the calculated statistics
+cat("Average yield increase per year (dt/ha):", round(average_slope, 2), "\n")
+cat("Fluctuation range of yield increase (dt/ha):", round(min_slope, 2), "to", round(max_slope, 2), "\n")
+cat("Overall de-trended average yield (dt/ha) for all years combined:", round(overall_average_detrended_yield, 2), "\n")
 
 # Save the detrended data to a new CSV file
-write_csv(data, "detrended_data.csv")
-
-# Optional: Plot the detrended data (can be removed if not needed)
-ggplot(data, aes(x = year, y = Yield_Detrended, color = district)) +
-  geom_point() +
-  geom_line() +
-  ggtitle("Detrended Yield Data by District") +
-  xlab("Year") +
-  ylab("Yield (Detrended)")
-
-# Save the plot as an image file
-ggsave("detrended_yield_plot.png")
+write_csv(data, "detrended_Final.csv")
