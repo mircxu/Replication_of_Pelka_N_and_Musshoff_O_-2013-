@@ -1,0 +1,38 @@
+library(ggplot2)
+library(dplyr)
+library(lme4)
+library(readr)
+
+# Replace 'path_to_your_file.csv' with the actual path to your data file
+data <- read_csv("filtered_data.csv")
+
+# Fit a linear mixed-effects model
+model <- lmer(value ~ year + (year | district), data = data)
+summary(model)
+
+# Extract random effects
+district_trends <- ranef(model)$district
+district_trends$district <- rownames(district_trends)
+colnames(district_trends) <- c("Intercept", "Slope", "district")
+
+# Merge the district-specific trends with the original data
+data <- data %>%
+  left_join(district_trends, by = "district") %>%
+  mutate(Yield_Detrended = value - (Slope * year + Intercept))
+
+# Display the first few rows of the adjusted data
+head(data)
+
+# Save the detrended data to a new CSV file
+write_csv(data, "detrended_data.csv")
+
+# Optional: Plot the detrended data (can be removed if not needed)
+ggplot(data, aes(x = year, y = Yield_Detrended, color = district)) +
+  geom_point() +
+  geom_line() +
+  ggtitle("Detrended Yield Data by District") +
+  xlab("Year") +
+  ylab("Yield (Detrended)")
+
+# Save the plot as an image file
+ggsave("detrended_yield_plot.png")
