@@ -1,0 +1,69 @@
+# Load necessary libraries
+library(dplyr)
+library(readr)
+# Step 1: Read the CSV files
+allstations_temp <- read_csv("allstations_temp.csv")
+allstations_rain <- read_csv("allstations_rain.csv")
+
+# Step 2: Extract station IDs from the temperature and rainfall data
+temp_station_ids <- colnames(allstations_temp)[-1]  # Exclude the date column
+rain_station_ids <- colnames(allstations_rain)[-1]  # Exclude the date column
+
+# Step 3: Combine and summarize station IDs
+all_station_ids <- unique(c(temp_station_ids, rain_station_ids))
+
+# Step 4: Create a data frame for summary
+station_summary <- data.frame(
+  Station_ID = all_station_ids,
+  In_Temperature = all_station_ids %in% temp_station_ids,
+  In_Rainfall = all_station_ids %in% rain_station_ids
+)
+
+# Step 5: Save the general summary information to a CSV file
+write_csv(station_summary, "station_summary_all.csv")
+
+# Step 6: Filter the summary to include only stations with both In_Temperature and In_Rainfall as TRUE
+filtered_station_summary <- station_summary %>%
+  filter(In_Temperature == TRUE, In_Rainfall == TRUE)
+
+# Step 7: Save the filtered summary to a CSV file
+write_csv(filtered_station_summary, "station_summary.csv")
+
+
+# Keave just Stations that are in both files
+station_summary <- read.csv("station_summary.csv")
+stations_df_all <- read.csv("stations_df_all.csv")
+
+# Filter stations_df_all to include only stations present in station_summary
+filtered_stations_df <- stations_df_all %>%
+  filter(stations_id %in% station_summary$Station_ID)
+
+# Save the filtered dataframe to a new CSV file
+write.csv(filtered_stations_df, "filtered_stations_df_all.csv", row.names = FALSE)
+
+# Load necessary libraries
+library(dplyr)
+
+# Load the CSV files
+stations_df <- read.csv('filtered_stations_df_all.csv')
+data_df <- read.csv('filtered_data.csv')
+
+# For each district, select the nearest station
+nearest_stations_df <- stations_df %>%
+  group_by(kreis_code_in) %>%
+  slice_min(order_by = dist, n = 1) %>%
+  ungroup()
+
+# Merge the datasets on 'kreis_code_in' and 'district_no'
+merged_df <- data_df %>%
+  left_join(nearest_stations_df %>% select(kreis_code_in, stations_id, geobreite, geolaenge), 
+            by = c("district_no" = "kreis_code_in"))
+
+# Convert 'stations_id' to integer to remove the '.0'
+merged_df$stations_id <- as.integer(merged_df$stations_id)
+
+# Save the updated dataframe to a new CSV file
+write.csv(merged_df, 'final_data_with_station_IDs.csv', row.names = FALSE)
+
+# Display the merged dataframe to the user (optional, for your reference)
+print(head(merged_df))
