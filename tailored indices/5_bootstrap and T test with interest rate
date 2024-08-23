@@ -72,13 +72,13 @@ std_with <- aggregate(revenue ~ district_no, df_deriv_dist, sd)
 
 # Combine the standard deviations into a single data frame
 results <- merge(std_without, std_with, by = "district_no")
-names(results) <- c("Farm", "Std_Without", "Std_With")
+names(results) <- c("district", "Std_Without", "Std_With")
 
-# Calculate hedging effectiveness for each farm
+# Calculate hedging effectiveness for each district
 results$Hedging_Effectiveness <- (results$Std_Without - results$Std_With) / results$Std_Without * 100
 
 # Display the standard deviations and hedging effectiveness
-print("Standard deviations and hedging effectiveness for each farm:")
+print("Standard deviations and hedging effectiveness for each district:")
 print(results)
 
 ##### Paired t-Test #####
