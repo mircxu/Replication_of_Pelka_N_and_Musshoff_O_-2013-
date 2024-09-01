@@ -84,3 +84,18 @@ print(summary_table)
 
 # Save the summary statistics to a CSV file
 write_csv(summary_table, "summary_statistics_detrended_yields.csv")
+
+
+# Load necessary libraries
+library(ggplot2)
+
+# Create a scatter plot of the de-trended yields for all districts combined
+ggplot(data_ww_final, aes(x = year, y = value)) +
+  geom_point(color = "orange", alpha = 0.6) +  # Scatter plot points
+  geom_smooth(method = "lm", se = FALSE, color = "red", linetype = "dashed") +  # Trendline
+  labs(title = "De-trended Winter Wheat Yields Over the Years",
+       x = "Year",
+       y = "Yield (dt/ha)",
+       color = "Legend") +
+  theme_minimal()
+
