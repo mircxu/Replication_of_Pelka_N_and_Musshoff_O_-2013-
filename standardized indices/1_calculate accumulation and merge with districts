@@ -57,3 +57,21 @@ print(july_august_sum_long)
 
 # Save the result to a CSV file
 write.csv(july_august_sum_long, "July_August_Sum_Rain_Years_Stations.csv", row.names = FALSE)
+
+# Load the datasets
+rain_data <- read.csv('July_August_Sum_Rain_Years_Stations.csv')
+temp_data <- read.csv('June_Avg_Temp_All_Years_Stations.csv')
+station_data <- read.csv('final_data_with_station_IDs.csv')
+
+# Merging the datasets on `Year` and `station_id`/`stations_id`
+merged_data <- station_data %>%
+  left_join(rain_data, by = c("year" = "Year", "stations_id" = "station_id")) %>%
+  left_join(temp_data, by = c("year" = "Year", "stations_id" = "station_id"))
+
+# Removing specified columns and renaming the required columns
+final_data <- merged_data %>%
+  select(-district, -nuts_id, -geobreite,	-geolaenge) %>%
+  rename(IR = July_Aug_Rain, IT = June_Avg_Temp)
+
+# Saving the final dataset to a CSV file
+write.csv(final_data, 'merged_final_data_standartized.csv', row.names = FALSE)
