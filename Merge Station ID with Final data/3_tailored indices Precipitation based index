@@ -1,1 +1,42 @@
+library(dplyr)
+library(readr)
+
+# Step 1: Read the CSV files
+allstations_rain <- read_csv("allstations_rain.csv")
+
+# Load the CSV files
+stations_df <- read.csv('stations_df_all.csv')
+data_df <- read.csv('filtered_data.csv')
+
+# Step 2: Extract the station IDs from the column names, removing the 'X' prefix
+rain_station_ids <- gsub("X", "", names(allstations_rain)[-1])
+
+# Step 3: Filter stations for rain using extracted station IDs
+rain_stations_df <- stations_df %>%
+  filter(as.character(stations_id) %in% rain_station_ids)
+
+# Step 4: Find the nearest station for rain for each district
+nearest_rain_stations_df <- rain_stations_df %>%
+  group_by(kreis_code_in) %>%
+  slice_min(order_by = dist, n = 1) %>%
+  ungroup() %>%
+  rename(stations_id_rain = stations_id, geobreite_rain = geobreite, geolaenge_rain = geolaenge)
+
+# Step 5: Merge the datasets on 'kreis_code_in' and 'district_no'
+merged_df <- data_df %>%
+  left_join(nearest_rain_stations_df %>% select(kreis_code_in, stations_id_rain, geobreite_rain, geolaenge_rain), 
+            by = c("district_no" = "kreis_code_in"))
+
+# Step 6: Remove unnecessary columns
+final_df <- merged_df %>%
+  select(-geobreite_rain, -geolaenge_rain)
+
+# Convert 'stations_id_rain' to integer to remove the '.0'
+final_df$stations_id_rain <- as.integer(final_df$stations_id_rain)
+
+# Save the updated dataframe to a new CSV file
+write.csv(final_df, 'final_data_with_rain_station_IDs.csv', row.names = FALSE)
+
+# Display the final dataframe to the user 
+print(head(final_df))
 
