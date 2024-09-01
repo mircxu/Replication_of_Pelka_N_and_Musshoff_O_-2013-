@@ -1,0 +1,112 @@
+library(tidyverse)
+library(boot)
+
+# Load the datasets
+df_deriv_dist <- read_csv('tailored_options_diff.csv')
+
+# Define the number of bootstrap iterations
+n_iterations <- 10000
+
+# Function to calculate the mean
+mean_func <- function(data_, indices) {
+  return(mean(data_[indices]))
+}
+
+##### By Dist #####
+# Perform bootstrap resampling
+bootstrap_results <- boot(df_deriv_dist$n_mixed, statistic = mean_func, R = n_iterations)
+
+# Calculate the mean of the bootstrap samples
+bootstrap_means <- bootstrap_results$t
+fair_premium <- mean(bootstrap_means)
+df_deriv_dist$fair_premium <- fair_premium
+
+# Plot histogram of bootstrap means
+hist(bootstrap_means, breaks=30, xlab='Mean Payout', border='white', main="Histogram of Bootstrap Means")
+
+# Add a vertical line at the mean fair premium
+abline(v=fair_premium, col='red', lwd=2)
+
+# Calculate Confidence Intervals
+ci_level <- 0.95
+beta <- (1 - ci_level) / 2
+
+ci_lo <- quantile(bootstrap_results$t, beta)
+ci_up <- quantile(bootstrap_results$t, ci_level + beta)
+
+cat("Bootstrap Mean:", fair_premium, "\n")
+cat(ci_level * 100, "% Confidence Interval:", ci_lo, ci_up, "\n")
+
+##### Calculating z and Revenue #####
+# Define the function to calculate z
+calc_revenue <- function(df_){
+  cov_ <- cov(df_$yt_price, df_$n_mixed)
+  var_ <- var(df_$n_mixed)
+  z <- -cov_ / var_
+  
+  return(z)
+}
+
+# Apply the function to each district and add z to the data frame
+df_deriv_dist <- df_deriv_dist %>%
+  mutate(yt_price = Y_t * 16) %>%  # Calculate yt_price as Y_t * 16
+  group_by(district_no) %>%
+  mutate(z = calc_revenue(cur_data())) %>%
+  ungroup()
+
+# Calculate revenue using the derived z and fair premium
+df_deriv_dist <- df_deriv_dist %>%
+  mutate(revenue = Y_t * 16 + z * n_mixed - z * fair_premium)
+
+##### Standard Deviation and Hedging Effectiveness #####
+# Calculate standard deviations of revenues with and without derivatives
+std_without <- aggregate(yt_price ~ district_no, df_deriv_dist, sd)
+std_with <- aggregate(revenue ~ district_no, df_deriv_dist, sd)
+
+# Combine the standard deviations into a single data frame
+results <- merge(std_without, std_with, by = "district_no")
+names(results) <- c("District", "Std_Without", "Std_With")
+
+# Calculate hedging effectiveness for each district
+results$Hedging_Effectiveness <- (results$Std_Without - results$Std_With) / results$Std_Without * 100
+
+# Display the standard deviations and hedging effectiveness
+print("Standard deviations and hedging effectiveness for each District:")
+print(results)
+
+##### Paired t-Test #####
+# Perform a paired t-test on the revenues with and without derivatives
+t_test_results <- t.test(df_deriv_dist$yt_price, df_deriv_dist$revenue, paired = TRUE)
+
+# Display the results of the t-test
+print("Paired t-test results:")
+print(t_test_results)
+
+##### Save the Results #####
+# Save the results to a CSV file
+df_deriv_dist %>% write_csv('deriv_dist_fair_premium_diff.csv')
+
+
+# Load necessary libraries
+library(tidyverse)
+
+# Calculate summary statistics by district_no
+summary_table <- df_deriv_dist %>%
+  group_by(district_no) %>%
+  summarise(
+    Average = mean(n_mixed, na.rm = TRUE),
+    Minimum = min(n_mixed, na.rm = TRUE),
+    Maximum = max(n_mixed, na.rm = TRUE),
+    SD = sd(n_mixed, na.rm = TRUE)
+  ) %>%
+  rename(`Kreis Code` = district_no,
+         `Average (%)` = Average,
+         `Minimum (%)` = Minimum,
+         `Maximum (%)` = Maximum,
+         `SD (%)` = SD)
+
+# Display the summary table
+print(summary_table)
+
+# Save the hedging effectiveness results to a CSV file
+results %>% write_csv('hedging_effectiveness_per_kreis_diff.csv')
