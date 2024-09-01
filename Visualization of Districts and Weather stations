@@ -4,9 +4,33 @@ library(ggplot2)
 library(sf)
 library(rnaturalearth)
 library(rnaturalearthdata)
+# Load necessary libraries
+library(dplyr)
+
+# Read the CSV files
+stations_df <- read.csv("stations_df_all.csv")
+rain_df <- read.csv("allstations_rain.csv")
+temp_df <- read.csv("allstations_temp.csv")
+
+# Extract the station IDs from the column names, removing the 'X' prefix
+rain_station_ids <- gsub("X", "", names(rain_df)[-1])
+temp_station_ids <- gsub("X", "", names(temp_df)[-1])
+
+# Convert the station IDs to numeric
+rain_station_ids <- as.numeric(rain_station_ids)
+temp_station_ids <- as.numeric(temp_station_ids)
+
+# Combine the station IDs from both rain and temp
+combined_station_ids <- union(rain_station_ids, temp_station_ids)
+
+# Filter the stations_df to only include those station_ids
+filtered_stations_df <- stations_df %>% filter(stations_id %in% combined_station_ids)
+
+# Save the filtered DataFrame to a new CSV file
+write.csv(filtered_stations_df, "for visualization.csv", row.names = FALSE)
 
 # Load the datasets
-stations_data <- read.csv('filtered_stations_df_all.csv')
+stations_data <- read.csv('for visualization.csv')
 district_data <- read.csv('Final_data_Station.csv')
 
 # Filter for unique station IDs
