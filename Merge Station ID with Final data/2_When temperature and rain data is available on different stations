@@ -1,4 +1,3 @@
-
 library(dplyr)
 library(readr)
 
@@ -51,28 +50,20 @@ merged_df <- merged_df %>%
                                 filter(kreis_code_in == district_no & stations_id != stations_id_rain) %>%
                                 slice_min(order_by = dist, n = 1) %>%
                                 pull(stations_id), 
-                              stations_id_temp),
-    geobreite_temp = ifelse(stations_id_rain == stations_id_temp, 
-                            temp_stations_df %>% 
-                              filter(kreis_code_in == district_no & stations_id != stations_id_rain) %>%
-                              slice_min(order_by = dist, n = 1) %>%
-                              pull(geobreite), 
-                            geobreite_temp),
-    geolaenge_temp = ifelse(stations_id_rain == stations_id_temp, 
-                            temp_stations_df %>% 
-                              filter(kreis_code_in == district_no & stations_id != stations_id_rain) %>%
-                              slice_min(order_by = dist, n = 1) %>%
-                              pull(geolaenge), 
-                            geolaenge_temp)
+                              stations_id_temp)
   ) %>%
   ungroup()
 
+# Step 8: Remove unnecessary columns
+final_df <- merged_df %>%
+  select(-geobreite_temp, -geolaenge_temp, -geobreite_rain, -geolaenge_rain)
+
 # Convert 'stations_id' to integer to remove the '.0'
-merged_df$stations_id_rain <- as.integer(merged_df$stations_id_rain)
-merged_df$stations_id_temp <- as.integer(merged_df$stations_id_temp)
+final_df$stations_id_rain <- as.integer(final_df$stations_id_rain)
+final_df$stations_id_temp <- as.integer(final_df$stations_id_temp)
 
 # Save the updated dataframe to a new CSV file
-write.csv(merged_df, 'final_data_with_different_station_IDs.csv', row.names = FALSE)
+write.csv(final_df, 'final_data_with_different_station_IDs.csv', row.names = FALSE)
 
-# Display the merged dataframe to the user 
-print(head(merged_df))
+# Display the final dataframe to the user 
+print(head(final_df))
