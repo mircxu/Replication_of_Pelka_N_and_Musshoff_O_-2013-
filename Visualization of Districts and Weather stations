@@ -1,8 +1,10 @@
+# Load necessary libraries
 library(tidyverse)
 library(ggplot2)
 library(sf)
 library(rnaturalearth)
 library(rnaturalearthdata)
+
 # Load the datasets
 stations_data <- read.csv('filtered_stations_df_all.csv')
 district_data <- read.csv('Final_data_Station.csv')
@@ -14,6 +16,11 @@ unique_stations_data <- stations_data %>%
 # Filter for unique district_no
 unique_district_data <- district_data %>%
   distinct(district_no, .keep_all = TRUE)
+
+# Get the map of Germany
+germany <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  filter(name == "Germany")
+
 # Plotting unique stations and unique districts on the map of Germany
 ggplot(data = germany) +
   geom_sf(fill = "white", color = "black") +  # Germany map
