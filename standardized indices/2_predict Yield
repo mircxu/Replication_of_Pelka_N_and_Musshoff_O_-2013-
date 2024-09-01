@@ -91,7 +91,7 @@ models_stations <- df %>%
 print(models_stations)
 
 # Write the coefficients to a CSV file
-write.csv(models_stations, 'models_stations_coefficients.csv', row.names = FALSE)
+write.csv(models_stations, 'models_stations_coefficients_st.csv', row.names = FALSE)
 
 # Reshape the models data for prediction
 models_stations_wider <- models_stations %>% 
@@ -118,4 +118,4 @@ df_with_pred <- df_with_coef %>%
   select(district_no:IT_t, prediction)
 
 # Write the final dataframe with predictions to a CSV file
-write.csv(df_with_pred, 'district_wi_predictions.csv', row.names=FALSE)
+write.csv(df_with_pred, 'district_wi_predictions_st.csv', row.names=FALSE)
