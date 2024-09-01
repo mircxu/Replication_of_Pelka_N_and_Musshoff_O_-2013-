@@ -1,0 +1,121 @@
+# Clear the workspace
+rm(list = ls())
+
+# Load required packages
+library(dplyr)
+library(broom)
+library(purrr)
+library(tidyr)
+library(stringr)
+
+# Load data (adjust the path as necessary)
+df_raw <- read.csv('merged_final_data_standartized.csv')
+
+# Verify the type and structure of df_raw
+if (!is.data.frame(df_raw)) {
+  stop("The object 'df_raw' is not a data frame. Please check your data loading process.")
+}
+
+# Inspect the first few rows and structure
+print(head(df_raw))
+str(df_raw)
+
+# Print column names to verify
+print(names(df_raw))
+
+# Rename columns if necessary (update the names to match your data)
+df <- df_raw %>%
+  rename(
+    IR_t = `IR`,        # Update to actual column names if different
+    IT_t = `IT`,        # Update to actual column names if different
+    Y_t = `value`,  # Replace with the correct column name for Yield
+    stations = `stations_id`, # Update to actual column names if different
+    Year = `year`       # Update to actual column names if different
+  )
+
+# Check column names after renaming
+print(names(df))
+
+# Proceed only if all required columns are present
+required_columns <- c("IR_t", "IT_t", "Y_t", "stations", "Year")
+missing_columns <- setdiff(required_columns, names(df))
+if (length(missing_columns) > 0) {
+  stop(paste("The following required columns are missing:", paste(missing_columns, collapse = ", ")))
+}
+
+# Remove rows with NA values in columns
+df <- df %>%
+  filter(!is.na(IR_t) & !is.na(IT_t) & !is.na(Y_t))
+
+# Recreate additional columns
+df <- df %>%
+  mutate(IR_t_squared = IR_t^2,
+         IT_t_squared = IT_t^2,
+         IR_t_IT_t = IR_t * IT_t)
+
+# Check for any remaining NA values in the new columns
+na_check <- df %>%
+  summarise(across(c(IR_t, IT_t, IR_t_squared, IT_t_squared, IR_t_IT_t, Y_t), ~ sum(is.na(.))))
+print(na_check)
+
+# Print group sizes
+group_sizes <- df %>%
+  group_by(stations) %>%
+  summarise(count = n())
+print(group_sizes)
+
+# Debug data for each group
+df %>%
+  group_by(district_no) %>%
+  do({
+    cat("Group:", unique(.$stations), "\n")
+    print(head(.))
+    .
+  })
+
+# Separate Models for Each station
+models_stations <- df %>%
+  group_by(district_no) %>%
+  do({
+    data <- .
+    if (nrow(data) > 0) { # Ensure there is data to model
+      model <- lm(Y_t ~ IR_t + IT_t + IR_t_squared + IT_t_squared + IR_t_IT_t, data = data)
+      tidy(model) %>%
+        mutate(district_no = unique(data$district_no)) # Add district identifier to each result
+    } else {
+      tibble() # Return an empty tibble if no data
+    }
+  })
+
+# Print summaries of models for each district
+print(models_stations)
+
+# Write the coefficients to a CSV file
+write.csv(models_stations, 'models_stations_coefficients.csv', row.names = FALSE)
+
+# Reshape the models data for prediction
+models_stations_wider <- models_stations %>% 
+  select(district_no, term, estimate) %>% 
+  mutate(term = str_replace_all(term, "[()]", ""),
+         term = paste0(term, '_coef')) %>% 
+  pivot_wider(id_cols = 'district_no',
+              names_from = 'term', values_from = 'estimate')
+
+# Join the coefficients with the original data
+df_with_coef <- df %>% 
+  inner_join(models_stations_wider, by="district_no")
+
+df_with_coef %>% glimpse()
+
+# Calculate predictions using the model coefficients
+df_with_pred <- df_with_coef %>%
+  mutate(prediction = Intercept_coef +
+           IR_t_coef * IR_t +
+           IT_t_coef * IT_t +
+           IR_t_squared_coef * IR_t_squared +
+           IT_t_squared_coef * IT_t_squared +
+           IR_t_IT_t_coef * IR_t_IT_t) %>% 
+  select(district_no:IT_t, prediction)
+
+# Write the final dataframe with predictions to a CSV file
+write.csv(df_with_pred, 'district_wi_predictions.csv', row.names=FALSE)
