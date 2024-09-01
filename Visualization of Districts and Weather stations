@@ -1,0 +1,33 @@
+library(tidyverse)
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+# Load the datasets
+stations_data <- read.csv('filtered_stations_df_all.csv')
+district_data <- read.csv('Final_data_Station.csv')
+
+# Filter for unique station IDs
+unique_stations_data <- stations_data %>%
+  distinct(stations_id, .keep_all = TRUE)
+
+# Filter for unique district_no
+unique_district_data <- district_data %>%
+  distinct(district_no, .keep_all = TRUE)
+# Plotting unique stations and unique districts on the map of Germany
+ggplot(data = germany) +
+  geom_sf(fill = "white", color = "black") +  # Germany map
+  geom_point(data = unique_district_data, aes(x = geo_point_lang, y = geo_point_latd, color = "Districts"), size = 2, alpha = 0.7) +
+  geom_point(data = unique_stations_data, aes(x = geolaenge, y = geobreite, color = "Weather Stations"), size = 2, alpha = 0.7) +
+  coord_sf() +
+  theme_minimal() +
+  labs(
+    x = "Longitude",
+    y = "Latitude",
+    color = "Locations"
+  ) +
+  scale_color_manual(values = c("Districts" = "blue", "Weather Stations" = "red")) +
+  theme(legend.position = "bottom")
+
+# Save the plot
+ggsave("unique_districts_weather_stations_map_germany.png", width = 10, height = 8)
