@@ -1,0 +1,420 @@
+library(tidyverse)
+library(purrr)
+library(readxl)
+library(lubridate)
+library(rdwd)
+library(berryFunctions)
+
+
+
+library(dplyr)
+library(readr)
+
+# Step 1: Read the CSV files
+allstations_temp <- read_csv("allstations_temp.csv")
+allstations_rain <- read_csv("allstations_rain.csv")
+
+# Load the CSV files
+stations_df <- read.csv('stations_df_all.csv')
+data_df <- read.csv('filtered_data_detrended.csv')
+
+# Step 2: Extract the station IDs from the column names, removing the 'X' prefix
+rain_station_ids <- gsub("X", "", names(allstations_rain)[-1])
+temp_station_ids <- gsub("X", "", names(allstations_temp)[-1])
+
+# Step 3: Filter stations for rain and temperature using extracted station IDs
+rain_stations_df <- stations_df %>%
+  filter(as.character(stations_id) %in% rain_station_ids)
+
+temp_stations_df <- stations_df %>%
+  filter(as.character(stations_id) %in% temp_station_ids)
+
+# Step 4: Find the nearest station for rain for each district
+nearest_rain_stations_df <- rain_stations_df %>%
+  group_by(kreis_code_in) %>%
+  slice_min(order_by = dist, n = 1) %>%
+  ungroup() %>%
+  rename(stations_id_rain = stations_id, geobreite_rain = geobreite, geolaenge_rain = geolaenge)
+
+# Step 5: Find the nearest station for temperature for each district
+nearest_temp_stations_df <- temp_stations_df %>%
+  group_by(kreis_code_in) %>%
+  slice_min(order_by = dist, n = 1) %>%
+  ungroup() %>%
+  rename(stations_id_temp = stations_id, geobreite_temp = geobreite, geolaenge_temp = geolaenge)
+
+# Step 6: Merge the datasets on 'kreis_code_in' and 'district_no'
+merged_df <- data_df %>%
+  left_join(nearest_rain_stations_df %>% select(kreis_code_in, stations_id_rain, geobreite_rain, geolaenge_rain), 
+            by = c("district_no" = "kreis_code_in")) %>%
+  left_join(nearest_temp_stations_df %>% select(kreis_code_in, stations_id_temp, geobreite_temp, geolaenge_temp), 
+            by = c("district_no" = "kreis_code_in"))
+
+# Step 7: If rain and temperature stations are the same, find the next nearest temperature station
+merged_df <- merged_df %>%
+  rowwise() %>%
+  mutate(
+    stations_id_temp = ifelse(stations_id_rain == stations_id_temp, 
+                              temp_stations_df %>% 
+                                filter(kreis_code_in == district_no & stations_id != stations_id_rain) %>%
+                                slice_min(order_by = dist, n = 1) %>%
+                                pull(stations_id), 
+                              stations_id_temp)
+  ) %>%
+  ungroup()
+
+# Step 8: Remove unnecessary columns
+final_df <- merged_df %>%
+  select(-geobreite_temp, -geolaenge_temp, -geobreite_rain, -geolaenge_rain)
+
+# Convert 'stations_id' to integer to remove the '.0'
+final_df$stations_id_rain <- as.integer(final_df$stations_id_rain)
+final_df$stations_id_temp <- as.integer(final_df$stations_id_temp)
+
+# Save the updated dataframe to a new CSV file
+write.csv(final_df, 'final_data_with_different_station_IDs.csv', row.names = FALSE)
+
+# Display the final dataframe to the user 
+print(head(final_df))
+
+
+
+# Load necessary libraries
+library(dplyr)
+library(lubridate)
+library(tidyr)
+library(stringr)
+
+# Load the dataset
+data <- read.csv("allstations_temp.csv")
+
+# Convert the date column to Date format
+data$Date <- as.Date(data$Stations_id, format="%d.%m.%Y")
+
+# Filter the data for June
+june_data <- data %>%
+  filter(month(Date) == 6)
+
+# Calculate the average temperature for June for each station by year
+june_avg_temp <- june_data %>%
+  group_by(Year = year(Date)) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE))
+
+# Reshape data to long format and remove 'X' from station codes
+june_avg_temp_long <- june_avg_temp %>%
+  pivot_longer(cols = -Year, names_to = "station_id", values_to = "June_Avg_Temp") %>%
+  mutate(station_id = str_remove(station_id, "^X"))
+
+# Display the result
+print(june_avg_temp_long)
+
+# Save the result to a CSV file
+write.csv(june_avg_temp_long, "June_Avg_Temp_All_Years_Stations.csv", row.names = FALSE)
+
+
+# Load the dataset
+data <- read.csv("allstations_rain.csv")
+
+# Convert the date column to Date format
+data$Date <- as.Date(data$Stations_id, format="%d.%m.%Y")
+
+# Filter the data for July and August
+july_august_data <- data %>%
+  filter(month(Date) %in% c(7, 8))
+
+# Summarize the data by year and station, summing the rainfall values
+july_august_sum <- july_august_data %>%
+  group_by(Year = year(Date)) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE))
+
+# Reshape data to long format and remove 'X' from station codes
+july_august_sum_long <- july_august_sum %>%
+  pivot_longer(cols = -Year, names_to = "Station_Code", values_to = "July_Aug_Rain") %>%
+  mutate(Station_Code = str_remove(Station_Code, "^X")) %>%
+  rename(station_id = Station_Code)
+
+# Display the result
+print(july_august_sum_long)
+
+# Save the result to a CSV file
+write.csv(july_august_sum_long, "July_August_Sum_Rain_Years_Stations.csv", row.names = FALSE)
+
+# Load the datasets
+rain_data <- read.csv('July_August_Sum_Rain_Years_Stations.csv')
+temp_data <- read.csv('June_Avg_Temp_All_Years_Stations.csv')
+station_data <- read.csv('final_data_with_station_IDs.csv')
+
+# Merging the datasets on `Year` and `station_id`/`stations_id`
+merged_data <- station_data %>%
+  left_join(rain_data, by = c("year" = "Year", "stations_id" = "station_id")) %>%
+  left_join(temp_data, by = c("year" = "Year", "stations_id" = "station_id"))
+
+# Removing specified columns and renaming the required columns
+final_data <- merged_data %>%
+  select(-district, -nuts_id, -geobreite,	-geolaenge) %>%
+  rename(IR = July_Aug_Rain, IT = June_Avg_Temp)
+
+# Saving the final dataset to a CSV file
+write.csv(final_data, 'merged_final_data_standartized.csv', row.names = FALSE)
+
+# Clear the workspace
+rm(list = ls())
+
+# Load required packages
+library(dplyr)
+library(broom)
+library(purrr)
+library(tidyr)
+library(stringr)
+
+# Load data (adjust the path as necessary)
+df_raw <- read.csv('merged_final_data_standartized.csv')
+
+# Verify the type and structure of df_raw
+if (!is.data.frame(df_raw)) {
+  stop("The object 'df_raw' is not a data frame. Please check your data loading process.")
+}
+
+# Inspect the first few rows and structure
+print(head(df_raw))
+str(df_raw)
+
+# Print column names to verify
+print(names(df_raw))
+
+# Rename columns if necessary (update the names to match your data)
+df <- df_raw %>%
+  rename(
+    IR_t = `IR`,        # Update to actual column names if different
+    IT_t = `IT`,        # Update to actual column names if different
+    Y_t = `value`,  # Replace with the correct column name for Yield
+    stations = `stations_id`, # Update to actual column names if different
+    Year = `year`       # Update to actual column names if different
+  )
+
+# Check column names after renaming
+print(names(df))
+
+# Proceed only if all required columns are present
+required_columns <- c("IR_t", "IT_t", "Y_t", "stations", "Year")
+missing_columns <- setdiff(required_columns, names(df))
+if (length(missing_columns) > 0) {
+  stop(paste("The following required columns are missing:", paste(missing_columns, collapse = ", ")))
+}
+
+# Remove rows with NA values in columns
+df <- df %>%
+  filter(!is.na(IR_t) & !is.na(IT_t) & !is.na(Y_t))
+
+# Recreate additional columns
+df <- df %>%
+  mutate(IR_t_squared = IR_t^2,
+         IT_t_squared = IT_t^2,
+         IR_t_IT_t = IR_t * IT_t)
+
+# Check for any remaining NA values in the new columns
+na_check <- df %>%
+  summarise(across(c(IR_t, IT_t, IR_t_squared, IT_t_squared, IR_t_IT_t, Y_t), ~ sum(is.na(.))))
+print(na_check)
+
+# Print group sizes
+group_sizes <- df %>%
+  group_by(stations) %>%
+  summarise(count = n())
+print(group_sizes)
+
+# Debug data for each group
+df %>%
+  group_by(district_no) %>%
+  do({
+    cat("Group:", unique(.$stations), "\n")
+    print(head(.))
+    .
+  })
+
+# Separate Models for Each station
+models_stations <- df %>%
+  group_by(district_no) %>%
+  do({
+    data <- .
+    if (nrow(data) > 0) { # Ensure there is data to model
+      model <- lm(Y_t ~ IR_t + IT_t + IR_t_squared + IT_t_squared + IR_t_IT_t, data = data)
+      tidy(model) %>%
+        mutate(district_no = unique(data$district_no)) # Add district identifier to each result
+    } else {
+      tibble() # Return an empty tibble if no data
+    }
+  })
+
+# Print summaries of models for each district
+print(models_stations)
+
+# Write the coefficients to a CSV file
+write.csv(models_stations, 'models_stations_coefficients_st.csv', row.names = FALSE)
+
+# Reshape the models data for prediction
+models_stations_wider <- models_stations %>% 
+  select(district_no, term, estimate) %>% 
+  mutate(term = str_replace_all(term, "[()]", ""),
+         term = paste0(term, '_coef')) %>% 
+  pivot_wider(id_cols = 'district_no',
+              names_from = 'term', values_from = 'estimate')
+
+# Join the coefficients with the original data
+df_with_coef <- df %>% 
+  inner_join(models_stations_wider, by="district_no")
+
+df_with_coef %>% glimpse()
+
+# Calculate predictions using the model coefficients
+df_with_pred <- df_with_coef %>%
+  mutate(prediction = Intercept_coef +
+           IR_t_coef * IR_t +
+           IT_t_coef * IT_t +
+           IR_t_squared_coef * IR_t_squared +
+           IT_t_squared_coef * IT_t_squared +
+           IR_t_IT_t_coef * IR_t_IT_t) %>% 
+  select(district_no:IT_t, prediction)
+
+# Write the final dataframe with predictions to a CSV file
+write.csv(df_with_pred, 'district_wi_predictions_st.csv', row.names=FALSE)
+
+
+# Load required libraries
+library(tidyverse)
+library(boot)
+
+
+# Step 1: Load the data
+district_wi_predictions_st <- read_csv('district_wi_predictions_st.csv')
+
+# Step 2: Calculate the district-level strike levels for indices
+district_wi_predictions_st <- district_wi_predictions_st %>%
+  group_by(district_no) %>%
+  mutate(
+    strike_level_mixed = mean(prediction, na.rm = TRUE),  # Strike level for mixed index
+    strike_level_IT = mean(IT_t, na.rm = TRUE),           # Strike level for temperature index
+    strike_level_IR = mean(IR_t, na.rm = TRUE)            # Strike level for rainfall index
+  ) %>%
+  ungroup()
+
+# Step 3: Calculate the call option payouts for indices
+df_deriv_dist_call <- district_wi_predictions_st %>%
+  rowwise() %>%
+  mutate(
+    n_call_IT = max(IT_t - strike_level_IT, 0),    # Call option payout for temperature index
+    n_call_IR = max(IR_t - strike_level_IR, 0),    # Call option payout for rainfall index
+    n_call_mixed = max(prediction - strike_level_mixed, 0),   # Call option payout for mixed index
+    n_IT = n_call_IT,  # Use only call option for temperature
+    n_IR = n_call_IR,  # Use only call option for rainfall
+    n_mixed = n_call_mixed # Use only call option for mixed index
+  )
+
+# Save the call option results
+write_csv(df_deriv_dist_call, 'tailored_call_options.csv')
+
+# Display the first few rows of the result
+print(head(df_deriv_dist_call))
+
+# Step 4: Define the number of bootstrap iterations and parameters
+n_iterations <- 10000  # Number of bootstrap iterations
+r <- 0.05  # 5% risk-free rate
+years <- 15  # Time period from 2006 to 2021
+ci_level <- 0.95  # Confidence interval level
+beta <- (1 - ci_level) / 2
+
+# Step 5: Define the mean function for bootstrapping
+mean_func <- function(data_, indices) {
+  return(mean(data_[indices], na.rm = TRUE)) # Calculate the mean for the bootstrap sample
+}
+
+# Step 6: Perform bootstrap resampling for call options
+bootstrap_results_call <- boot(df_deriv_dist_call$n_mixed, statistic = mean_func, R = n_iterations)
+
+# Step 7: Calculate the mean of the bootstrap samples for call options
+bootstrap_means_call <- bootstrap_results_call$t
+expected_payout_call <- mean(bootstrap_means_call)
+
+# Step 8: Discount the expected payout to present value using the risk-free rate
+fair_premium_call <- expected_payout_call / (1 + r) ^ years
+
+# Assign the fair premium to the dataframe
+df_deriv_dist_call$fair_premium <- fair_premium_call
+
+# Plot histogram of bootstrap means for call options
+hist(bootstrap_means_call, breaks = 30, xlab = 'Mean Payout', border = 'white', main = "Histogram of Bootstrap Means (Call Option)")
+
+# Add a vertical line at the mean fair premium
+abline(v = fair_premium_call, col = 'red', lwd = 2)
+
+# Step 9: Calculate confidence intervals for call options
+ci_lo_call <- quantile(bootstrap_results_call$t, beta)
+ci_up_call <- quantile(bootstrap_results_call$t, ci_level + beta)
+
+cat("Bootstrap Mean (Call Option):", fair_premium_call, "\n")
+cat(ci_level * 100, "% Confidence Interval (Call Option):", ci_lo_call, ci_up_call, "\n")
+
+# Step 10: Calculate z and revenue for call options
+calc_revenue <- function(df_) {
+  cov_ <- cov(df_$yt_price, df_$n_mixed)
+  var_ <- var(df_$n_mixed)
+  z <- -cov_ / var_
+  return(z)
+}
+
+# Apply the revenue calculation to each district
+df_deriv_dist_call <- df_deriv_dist_call %>%
+  mutate(yt_price = Y_t * 16) %>%  # Calculate yt_price as Y_t * 16
+  group_by(district_no) %>%
+  mutate(z = calc_revenue(cur_data())) %>%
+  ungroup()
+
+# Calculate revenue using the derived z and fair premium for call options
+df_deriv_dist_call <- df_deriv_dist_call %>%
+  mutate(revenue = Y_t * 16 + z * n_mixed - z * fair_premium)
+
+# Step 11: Calculate standard deviation and hedging effectiveness
+std_without_call <- aggregate(yt_price ~ district_no, df_deriv_dist_call, sd)
+std_with_call <- aggregate(revenue ~ district_no, df_deriv_dist_call, sd)
+
+# Combine the standard deviations into a single data frame
+results_call <- merge(std_without_call, std_with_call, by = "district_no")
+names(results_call) <- c("district", "Std_Without", "Std_With")
+
+# Calculate hedging effectiveness for each district
+results_call$Hedging_Effectiveness <- (results_call$Std_Without - results_call$Std_With) / results_call$Std_Without * 100
+
+# Display the standard deviations and hedging effectiveness
+print("Standard deviations and hedging effectiveness for each district (Call Option):")
+print(results_call)
+
+# Step 12: Perform a paired t-test on the revenues with and without derivatives
+t_test_results_call <- t.test(df_deriv_dist_call$yt_price, df_deriv_dist_call$revenue, paired = TRUE)
+
+# Display the results of the t-test
+print("Paired t-test results (Call Option):")
+print(t_test_results_call)
+
+# Step 13: Save the results for call options
+df_deriv_dist_call %>% write_csv('deriv_dist_fair_premium_call_options.csv')
+
+# Save the hedging effectiveness results
+results_call %>% write_csv('Std_hedging_effectiveness_call_same weather stations.csv')
+
+# Step 14: Generate summary statistics for call options
+summary_table_call <- df_deriv_dist_call %>%
+  group_by(district_no) %>%
+  summarise(
+    Average = mean(n_mixed, na.rm = TRUE),
+    Minimum = min(n_mixed, na.rm = TRUE),
+    Maximum = max(n_mixed, na.rm = TRUE),
+    SD = sd(n_mixed, na.rm = TRUE)
+  ) %>%
+  rename(`Kreis Code` = district_no,
+         `Average (%)` = Average,
+         `Minimum (%)` = Minimum,
+         `Maximum (%)` = Maximum,
+         `SD (%)` = SD)
+
+# Display the summary table for call options
+print(summary_table_call)
