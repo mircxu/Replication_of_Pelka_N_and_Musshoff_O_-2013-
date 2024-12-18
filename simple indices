@@ -1,0 +1,121 @@
+# Load necessary libraries
+library(tidyverse)
+library(readxl)
+
+# Step 1: Load Data
+# Load the datasets
+filtered_data <- read_csv("filtered_data_detrended.csv")
+rain_data <- read_csv("simple_rain_indices.csv")
+temp_data <- read_csv("simple_temp_indices.csv")
+
+# Step 2: Reshape Rain and Temperature Data
+# Melt rain and temperature data to long format for easier aggregation
+rain_long <- rain_data %>%
+  pivot_longer(cols = -c(year, period, index_type), names_to = "station_id", values_to = "rain_value")
+
+temp_long <- temp_data %>%
+  pivot_longer(cols = -c(year, period, index_type), names_to = "station_id", values_to = "temp_value")
+
+# Step 3: Add District Information
+# Join district information from filtered_data to both rain and temperature datasets
+rain_with_district <- rain_long %>%
+  left_join(filtered_data %>% select(district_no, year), by = "year")
+
+temp_with_district <- temp_long %>%
+  left_join(filtered_data %>% select(district_no, year), by = "year")
+
+# Step 4: Aggregate Weather Data
+# Calculate district-level averages for rain and temperature indices
+rain_aggregated <- rain_with_district %>%
+  group_by(district_no, year, period) %>%
+  summarise(district_rain_index = mean(rain_value, na.rm = TRUE), .groups = "drop")
+
+temp_aggregated <- temp_with_district %>%
+  group_by(district_no, year, period) %>%
+  summarise(district_temp_index = mean(temp_value, na.rm = TRUE), .groups = "drop")
+
+# Step 5: Merge Weather Indices and Yield Data
+# Merge aggregated rain and temperature indices
+weather_indices <- rain_aggregated %>%
+  inner_join(temp_aggregated, by = c("district_no", "year", "period"))
+
+# Merge weather indices with filtered yield data
+merged_data <- filtered_data %>%
+  inner_join(weather_indices, by = c("district_no", "year"))
+
+# Step 6: Add Squared and Interaction Terms for Regression
+merged_data <- merged_data %>%
+  mutate(
+    IR_t_squared = district_rain_index^2,
+    IT_t_squared = district_temp_index^2,
+    IR_t_IT_t = district_rain_index * district_temp_index
+  )
+
+# Step 7: Perform Regression Analysis
+# Group data by district and period and run regression for each group
+regression_results <- merged_data %>%
+  group_by(district_no, period) %>%
+  summarise(
+    regression_model = list(
+      lm(Yield_Detrended_2021 ~ district_rain_index + district_temp_index +
+           IR_t_squared + IT_t_squared + IR_t_IT_t, data = cur_data())
+    ),
+    .groups = "drop"
+  )
+
+# Extract model coefficients for each regression
+model_coefficients <- regression_results %>%
+  mutate(
+    coefficients = map(regression_model, broom::tidy)
+  ) %>%
+  select(district_no, period, coefficients) %>%
+  unnest(coefficients)
+
+# Save coefficients to a CSV file
+write_csv(model_coefficients, "regression_coefficients.csv")
+
+# Step 8: Calculate Strike Levels and Call Option Payouts
+# Calculate strike levels as means of predictions for each district
+strike_levels <- merged_data %>%
+  group_by(district_no) %>%
+  summarise(
+    strike_level_rain = mean(district_rain_index, na.rm = TRUE),
+    strike_level_temp = mean(district_temp_index, na.rm = TRUE),
+    strike_level_mixed = mean(predict(lm(
+      Yield_Detrended_2021 ~ district_rain_index + district_temp_index +
+        IR_t_squared + IT_t_squared + IR_t_IT_t,
+      data = merged_data
+    )), na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Calculate call option payouts for rainfall, temperature, and mixed indices
+call_options <- merged_data %>%
+  rowwise() %>%
+  mutate(
+    payout_rain = max(district_rain_index - strike_levels$strike_level_rain, 0),
+    payout_temp = max(district_temp_index - strike_levels$strike_level_temp, 0),
+    payout_mixed = max(predict(lm(
+      Yield_Detrended_2021 ~ district_rain_index + district_temp_index +
+        IR_t_squared + IT_t_squared + IR_t_IT_t,
+      data = merged_data
+    )) - strike_levels$strike_level_mixed, 0)
+  ) %>%
+  ungroup()
+
+# Step 9: Calculate Hedging Effectiveness
+# Calculate hedging effectiveness by comparing standard deviations of yield with and without derivatives
+hedging_effectiveness <- call_options %>%
+  group_by(district_no) %>%
+  summarise(
+    std_without_hedging = sd(Yield_Detrended_2021),
+    std_with_hedging = sd(Yield_Detrended_2021 - payout_mixed),
+    hedging_effectiveness = (std_without_hedging - std_with_hedging) / std_without_hedging * 100,
+    .groups = "drop"
+  )
+
+# Save results to a CSV file
+write_csv(hedging_effectiveness, "hedging_effectiveness.csv")
+
+# Save call option payouts to a CSV file
+write_csv(call_options, "call_option_payouts.csv")
