@@ -1,0 +1,114 @@
+# Load required libraries
+library(tidyverse)
+library(boot)
+
+# Step 1: Load the data
+district_wi <- read_csv('district_wi.csv')
+
+# Step 2: Calculate the district-level strike levels for indices
+district_wi <- district_wi %>%
+  group_by(district_no) %>%
+  mutate(
+    strike_level_mixed = mean(prediction, na.rm = TRUE),  # Strike level for mixed index
+    strike_level_IT = mean(IT_t, na.rm = TRUE),           # Strike level for temperature index
+    strike_level_IR = mean(IR_t, na.rm = TRUE),           # Strike level for rainfall index
+    strike_level_two_simple = mean((IR_t + IT_t) / 2, na.rm = TRUE) # Two Simple Indices
+  ) %>%
+  ungroup()
+
+# Step 3: Calculate the call option payouts for indices, including Two Simple Indices
+df_deriv_dist_call <- district_wi %>%
+  rowwise() %>%
+  mutate(
+    n_call_IT = max(IT_t - strike_level_IT, 0),    # Call option payout for temperature index
+    n_call_IR = max(IR_t - strike_level_IR, 0),    # Call option payout for rainfall index
+    n_call_mixed = max(prediction - strike_level_mixed, 0),   # Call option payout for mixed index
+    n_call_two_simple = max((IR_t + IT_t) / 2 - strike_level_two_simple, 0), # Two Simple Indices payout
+    n_IT = n_call_IT,  # Use only call option for temperature
+    n_IR = n_call_IR,  # Use only call option for rainfall
+    n_mixed = n_call_mixed, # Use only call option for mixed index
+    n_two_simple = n_call_two_simple # Use for Two Simple Indices
+  )
+
+# Save the call option results
+write_csv(df_deriv_dist_call, 'tailored_call_options_with_two_simple.csv')
+
+# Display the first few rows of the result
+print(head(df_deriv_dist_call))
+
+# Step 4: Define the number of bootstrap iterations and parameters
+n_iterations <- 10000  # Number of bootstrap iterations
+r <- 0.05  # 5% risk-free rate
+years <- 15  # Time period from 2006 to 2021
+ci_level <- 0.95  # Confidence interval level
+beta <- (1 - ci_level) / 2
+
+# Step 5: Define the mean function for bootstrapping
+mean_func <- function(data_, indices) {
+  return(mean(data_[indices], na.rm = TRUE)) # Calculate the mean for the bootstrap sample
+}
+
+# Step 6: Perform bootstrap resampling for call options
+bootstrap_results_two_simple <- boot(df_deriv_dist_call$n_two_simple, statistic = mean_func, R = n_iterations)
+
+# Step 7: Calculate the mean of the bootstrap samples for Two Simple Indices
+bootstrap_means_two_simple <- bootstrap_results_two_simple$t
+expected_payout_two_simple <- mean(bootstrap_means_two_simple)
+
+# Step 8: Discount the expected payout to present value using the risk-free rate
+fair_premium_two_simple <- expected_payout_two_simple / (1 + r) ^ years
+
+# Assign the fair premium to the dataframe
+df_deriv_dist_call$fair_premium_two_simple <- fair_premium_two_simple
+
+# Plot histogram of bootstrap means for Two Simple Indices
+hist(bootstrap_means_two_simple, breaks = 30, xlab = 'Mean Payout', border = 'white',
+     main = "Histogram of Bootstrap Means (Two Simple Indices)")
+abline(v = fair_premium_two_simple, col = 'red', lwd = 2)
+
+# Step 9: Calculate confidence intervals for Two Simple Indices
+ci_lo_two_simple <- quantile(bootstrap_results_two_simple$t, beta)
+ci_up_two_simple <- quantile(bootstrap_results_two_simple$t, ci_level + beta)
+
+cat("Bootstrap Mean (Two Simple Indices):", fair_premium_two_simple, "\n")
+cat(ci_level * 100, "% Confidence Interval (Two Simple Indices):", ci_lo_two_simple, ci_up_two_simple, "\n")
+
+# Step 10: Calculate z and revenue for Two Simple Indices
+calc_revenue <- function(df_, column_name) {
+  cov_ <- cov(df_$yt_price, df_[[column_name]])
+  var_ <- var(df_[[column_name]])
+  z <- -cov_ / var_
+  return(z)
+}
+
+# Apply the revenue calculation for Two Simple Indices
+df_deriv_dist_call <- df_deriv_dist_call %>%
+  mutate(yt_price = Y_t * 16) %>%  # Calculate yt_price as Y_t * 16
+  group_by(district_no) %>%
+  mutate(
+    z_two_simple = calc_revenue(cur_data(), "n_two_simple"),
+    revenue_two_simple = Y_t * 16 + z_two_simple * n_two_simple - z_two_simple * fair_premium_two_simple
+  ) %>%
+  ungroup()
+
+# Step 11: Calculate standard deviation and hedging effectiveness for Two Simple Indices
+std_without_two_simple <- aggregate(yt_price ~ district_no, df_deriv_dist_call, sd)
+std_with_two_simple <- aggregate(revenue_two_simple ~ district_no, df_deriv_dist_call, sd)
+
+# Combine the standard deviations into a single data frame
+results_two_simple <- merge(std_without_two_simple, std_with_two_simple, by = "district_no")
+names(results_two_simple) <- c("district_no", "Std_Without", "Std_With")
+
+# Calculate hedging effectiveness
+results_two_simple$Hedging_Effectiveness <- (results_two_simple$Std_Without - results_two_simple$Std_With) / 
+  results_two_simple$Std_Without * 100
+
+# Step 12: Save the results
+write_csv(results_two_simple, 'hedging_effectiveness_two_simple_indices.csv')
+
+# Display the results
+print("Hedging effectiveness for Two Simple Indices:")
+print(results_two_simple)
+
+# Final Summary
+cat("\nHedging effectiveness and fair premium calculation for Two Simple Indices completed.\n")
