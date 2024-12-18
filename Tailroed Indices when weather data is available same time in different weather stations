@@ -1,4 +1,5 @@
 ##preoare following files:georeferencedata.xlsx, Final_data.csv,filtered_data_detrended.csv) 
+##preoare following files:georeferencedata.xlsx, Final_data.csv,filtered_data_detrended.csv) 
 
 library(tidyverse)
 library(purrr)
@@ -181,101 +182,6 @@ final_df$stations_id_temp <- as.integer(final_df$stations_id_temp)
 # Save the updated dataframe to a new CSV file
 write.csv(final_df, 'final_data_with_different_station_IDs.csv', row.names = FALSE)
 
-# Display the final dataframe to the user 
-print(head(final_df))
-
-
-# Step 1: Read the CSV files
-allstations_temp <- read_csv("allstations_temp.csv")
-allstations_rain <- read_csv("allstations_rain.csv")
-
-# Step 2: Extract station IDs from the temperature and rainfall data
-temp_station_ids <- colnames(allstations_temp)[-1]  # Exclude the date column
-rain_station_ids <- colnames(allstations_rain)[-1]  # Exclude the date column
-
-# Step 3: Combine and summarize station IDs
-all_station_ids <- unique(c(temp_station_ids, rain_station_ids))
-
-# Step 4: Create a data frame for summary
-station_summary <- data.frame(
-  Station_ID = all_station_ids,
-  In_Temperature = all_station_ids %in% temp_station_ids,
-  In_Rainfall = all_station_ids %in% rain_station_ids
-)
-
-# Step 5: Save the general summary information to a CSV file
-write_csv(station_summary, "station_summary_all.csv")
-
-# Step 6: Filter the summary to include only stations with both In_Temperature and In_Rainfall as TRUE
-filtered_station_summary <- station_summary %>%
-  filter(In_Temperature == TRUE, In_Rainfall == TRUE)
-
-# Step 7: Save the filtered summary to a CSV file
-write_csv(filtered_station_summary, "station_summary.csv")
-
-
-# Keave just Stations that are in both files
-station_summary <- read.csv("station_summary.csv")
-stations_df_all <- read.csv("stations_df_all.csv")
-
-# Filter stations_df_all to include only stations present in station_summary
-filtered_stations_df <- stations_df_all %>%
-  filter(stations_id %in% station_summary$Station_ID)
-
-# Save the filtered dataframe to a new CSV file
-write.csv(filtered_stations_df, "filtered_stations_df_all.csv", row.names = FALSE)
-
-
-# Define file paths
-stations_df_all_path <- 'stations_df_all.csv'
-station_summary_path <- 'station_summary.csv'
-filtered_stations_output_path <- 'filtered_stations_df_all.csv'
-
-# Read the CSV files
-stations_df_all <- read_csv(stations_df_all_path)
-station_summary <- read_csv(station_summary_path)
-
-# Convert column names to lower case for consistency
-colnames(stations_df_all) <- tolower(colnames(stations_df_all))
-colnames(station_summary) <- tolower(colnames(station_summary))
-
-# Filter the data to include only stations present in station_summary
-filtered_stations_df_all <- stations_df_all %>%
-  filter(stations_id %in% station_summary$station_id)
-
-# Sort the filtered dataframe by 'kreis_code_in' and then by 'dist'
-sorted_filtered_stations_df_all <- filtered_stations_df_all %>%
-  arrange(kreis_code_in, dist)
-
-# Save the sorted filtered dataframe to a new CSV file
-write_csv(sorted_filtered_stations_df_all, filtered_stations_output_path)
-
-cat("Data saved to", filtered_stations_output_path, "\n")# Load necessary libraries
-library(dplyr)
-
-# Load the CSV files
-stations_df <- read.csv('filtered_stations_df_all.csv')
-data_df <- read.csv('filtered_data_detrended.csv')
-
-# For each district, select the nearest station
-nearest_stations_df <- stations_df %>%
-  group_by(kreis_code_in) %>%
-  slice_min(order_by = dist, n = 1) %>%
-  ungroup()
-
-# Merge the datasets on 'kreis_code_in' and 'district_no'
-merged_df <- data_df %>%
-  left_join(nearest_stations_df %>% select(kreis_code_in, stations_id, geobreite, geolaenge), 
-            by = c("district_no" = "kreis_code_in"))
-
-# Convert 'stations_id' to integer to remove the '.0'
-merged_df$stations_id <- as.integer(merged_df$stations_id)
-
-# Save the updated dataframe to a new CSV file
-write.csv(merged_df, 'final_data_with_station_IDs.csv', row.names = FALSE)
-
-# Display the merged dataframe to the user (optional, for your reference)
-print(head(merged_df))# Load necessary libraries
 
 # Load necessary libraries
 library(dplyr)
@@ -351,11 +257,9 @@ write.csv(all_rain_results, "all_rain_results.csv", row.names = FALSE)
 # Notify the user
 cat("Combined results have been saved to all_temp_results.csv and all_rain_results.csv.\n")
 
-library(dplyr)
-library(tidyr)
 
 # Load the datasets with headers correctly identified
-final_data_with_station_IDs <- read.csv("final_data_with_different_station_IDs.csv")
+final_df <- read.csv("final_data_with_different_station_IDs.csv")
 all_rain_results <- read.csv("all_rain_results.csv", header = TRUE, check.names = FALSE)
 all_temp_results <- read.csv("all_temp_results.csv", header = TRUE, check.names = FALSE)
 
@@ -365,11 +269,11 @@ all_rain_results_melted <- all_rain_results %>%
   mutate(stations_id_rain = as.numeric(as.character(stations_id_rain)))
 
 # Check the structure for debugging
-str(final_data_with_station_IDs)
+str(final_df)
 str(all_rain_results_melted)
 
 # Merge final_data_with_station_IDs with all_rain_results_melted based on `year` and `stations_id_rain`
-merged_data_rain <- final_data_with_station_IDs %>%
+merged_data_rain <- final_df %>%
   left_join(all_rain_results_melted, by = c("year", "stations_id_rain"))
 
 # Check the result of the first merge
@@ -726,9 +630,8 @@ cat("Degrees of freedom:", t_test_results$parameter, "\n")
 cat("p-value:", t_test_results$p.value, "\n")
 cat("Confidence Interval (95%):", t_test_results$conf.int, "\n\n")
 
-# Calculate Confidence Intervals for Revenue with and without Derivatives
-# Confidence intervals for yt_price (without derivatives)
-ci_yt_price <- quantile(df_deriv_dist
+                        
+                        
                         
                         
                         
