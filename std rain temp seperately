@@ -1,0 +1,171 @@
+# Load required packages
+library(tidyverse)
+library(broom)
+
+# Load data
+df_raw <- read.csv('Final_merged_data_different_stations.csv')
+
+# Verify the type and structure of df_raw
+if (!is.data.frame(df_raw)) {
+  stop("The object 'df_raw' is not a data frame. Please check your data loading process.")
+}
+
+# Inspect the first few rows and structure
+print(head(df_raw))
+str(df_raw)
+
+# Rename columns to match your data
+df <- df_raw %>%
+  rename(
+    IR_t = `IR`,                    # Precipitation index
+    IT_t = `IT`,                    # Temperature index
+    Y_t = `Yield`,                  # Yield
+    stations_rain = `Station_Rain`, # Rain station ID
+    stations_temp = `Station_Temp`, # Temperature station ID
+    Year = `year`,                  # Year
+    accumulation_period = `Correlation`
+  )
+
+# Remove rows with NA values in the relevant columns
+df <- df %>%
+  filter(!is.na(IR_t) & !is.na(IT_t) & !is.na(Y_t))
+
+# Recreate additional columns
+df <- df %>%
+  mutate(
+    IR_t_squared = IR_t^2,
+    IT_t_squared = IT_t^2,
+    IR_t_IT_t = IR_t * IT_t
+  )
+
+# Step 1: Calculate correlations for precipitation (IR_t)
+correlations_precipitation <- df %>%
+  group_by(accumulation_period) %>%
+  summarise(
+    correlation_IR = cor(Y_t, IR_t, use = "complete.obs"),
+    .groups = "drop"
+  )
+
+# Identify the best accumulation period for precipitation
+best_period_precipitation <- correlations_precipitation %>%
+  arrange(desc(correlation_IR)) %>%
+  slice(1) %>%
+  pull(accumulation_period)
+
+cat("Best Accumulation Period for Precipitation:", best_period_precipitation, "\n")
+
+# Step 2: Calculate correlations for temperature (IT_t)
+correlations_temperature <- df %>%
+  group_by(accumulation_period) %>%
+  summarise(
+    correlation_IT = cor(Y_t, IT_t, use = "complete.obs"),
+    .groups = "drop"
+  )
+
+# Identify the best accumulation period for temperature
+best_period_temperature <- correlations_temperature %>%
+  arrange(desc(correlation_IT)) %>%
+  slice(1) %>%
+  pull(accumulation_period)
+
+cat("Best Accumulation Period for Temperature:", best_period_temperature, "\n")
+
+# Step 3: Filter the dataset to use the best accumulation periods for precipitation and temperature
+df_best_precipitation <- df %>%
+  filter(accumulation_period == best_period_precipitation)
+
+df_best_temperature <- df %>%
+  filter(accumulation_period == best_period_temperature)
+
+# Combine the filtered datasets, ensuring all rows are considered for modeling
+df_combined <- bind_rows(df_best_precipitation, df_best_temperature) %>%
+  distinct()
+
+# Step 4: Fit regression models for all districts using the selected periods
+models_stations <- df_combined %>%
+  group_by(district_no) %>%
+  do({
+    data <- .
+    if (nrow(data) > 0) { # Ensure there is data to model
+      model <- lm(Y_t ~ IR_t + IT_t + IR_t_squared + IT_t_squared + IR_t_IT_t, data = data)
+      tidy(model) %>%
+        mutate(district_no = unique(data$district_no)) # Add district identifier to each result
+    } else {
+      tibble() # Return an empty tibble if no data
+    }
+  })
+
+# Step 5: Prepare data for predictions
+models_stations_wider <- models_stations %>%
+  select(district_no, term, estimate) %>% # Only select relevant columns
+  mutate(
+    term = str_replace_all(term, "[()]", ""), # Remove parentheses from term names
+    term = paste0(term, '_coef') # Add `_coef` suffix to term names
+  ) %>%
+  pivot_wider(
+    id_cols = district_no, # Use `district_no` as the unique identifier
+    names_from = term, # Use `term` values as column names
+    values_from = estimate # Use `estimate` as the values for new columns
+  )
+
+# Merge coefficients with the original data
+df_with_coef <- df_combined %>%
+  inner_join(models_stations_wider, by = "district_no")
+
+# Step 6: Calculate predictions using regression coefficients
+df_with_coef <- df_with_coef %>%
+  mutate(
+    prediction = Intercept_coef +
+      IR_t_coef * IR_t +
+      IT_t_coef * IT_t +
+      IR_t_squared_coef * IR_t_squared +
+      IT_t_squared_coef * IT_t_squared +
+      IR_t_IT_t_coef * IR_t_IT_t
+  )
+
+# Step 7: Calculate district-level strike levels and call option payouts
+df_with_coef <- df_with_coef %>%
+  group_by(district_no) %>%
+  mutate(
+    strike_level_IR = mean(IR_t, na.rm = TRUE),           # Strike level for precipitation index
+    strike_level_IT = mean(IT_t, na.rm = TRUE)            # Strike level for temperature index
+  ) %>%
+  ungroup()
+
+df_deriv_dist_call <- df_with_coef %>%
+  rowwise() %>%
+  mutate(
+    n_call_IR = max(IR_t - strike_level_IR, 0),    # Call option payout for precipitation
+    n_call_IT = max(IT_t - strike_level_IT, 0)     # Call option payout for temperature
+  )
+
+# Step 8: Calculate Hedging Effectiveness for Rainfall and Temperature
+# Rainfall hedging effectiveness
+hedging_effectiveness_rainfall <- df_deriv_dist_call %>%
+  mutate(
+    yt_price = Y_t * 16, # Revenue without hedging
+    revenue_rainfall = yt_price + n_call_IR, # Revenue with rainfall hedge
+    std_without = sd(yt_price, na.rm = TRUE), # Std dev without hedging
+    std_with_rainfall = sd(revenue_rainfall, na.rm = TRUE), # Std dev with rainfall hedge
+    hedging_effectiveness_rainfall = (std_without - std_with_rainfall) / std_without * 100 # Hedging effectiveness
+  ) %>%
+  select(district_no, std_without, std_with_rainfall, hedging_effectiveness_rainfall) %>%
+  distinct()
+
+# Temperature hedging effectiveness
+hedging_effectiveness_temperature <- df_deriv_dist_call %>%
+  mutate(
+    yt_price = Y_t * 16, # Revenue without hedging
+    revenue_temperature = yt_price + n_call_IT, # Revenue with temperature hedge
+    std_without = sd(yt_price, na.rm = TRUE), # Std dev without hedging
+    std_with_temperature = sd(revenue_temperature, na.rm = TRUE), # Std dev with temperature hedge
+    hedging_effectiveness_temperature = (std_without - std_with_temperature) / std_without * 100 # Hedging effectiveness
+  ) %>%
+  select(district_no, std_without, std_with_temperature, hedging_effectiveness_temperature) %>%
+  distinct()
+
+# Step 9: Save Results
+write.csv(hedging_effectiveness_rainfall, 'hedging_effectiveness_rainfall.csv', row.names = FALSE)
+write.csv(hedging_effectiveness_temperature, 'hedging_effectiveness_temperature.csv', row.names = FALSE)
+
+cat("Hedging effectiveness results saved to 'hedging_effectiveness_rainfall.csv' and 'hedging_effectiveness_temperature.csv'.\n")
