@@ -1,0 +1,691 @@
+##preoare following files:georeferencedata.xlsx, Final_data.csv,filtered_data_detrended.csv) 
+
+library(tidyverse)
+library(purrr)
+library(readxl)
+library(lubridate)
+library(rdwd)
+library(berryFunctions)
+
+# Importing data
+geo_data_raw <- read_excel('georeferencedata.xlsx')
+final_data_raw <- read.csv('Final_data.csv')
+
+# Preparing Geo Data
+names(geo_data_raw) <- gsub(' ', '_', tolower(names(geo_data_raw)))
+
+geo_data <- geo_data_raw %>%
+  select(geo_point, land_code, kreis_name, kreis_code) %>%
+  mutate(
+    geo_point = str_split(geo_point, pattern = ', '),
+    geo_point_latd = as.numeric(map(geo_point, ~ .x[[1]])),
+    geo_point_lang = as.numeric(map(geo_point, ~ .x[[2]])),
+    kreis_code = as.character(kreis_code)
+  ) %>%
+  unnest(cols = c('geo_point_lang', 'geo_point_latd')) %>%
+  select(-geo_point)
+
+# Define the range of years we are interested in
+required_years <- 2006:2021
+
+# Extract districts with complete data from 2006 to 2021
+final_data_no_gap <- final_data_raw %>%
+  filter(year %in% required_years & var == 'ww' & measure == 'yield') %>%
+  drop_na(value) %>%
+  select(district_no, year) %>%
+  distinct() %>%
+  group_by(district_no) %>%
+  summarise(has_year_gap = ifelse(all(required_years %in% year), 1, 0)) %>%
+  ungroup() %>%
+  filter(has_year_gap == 1) %>%
+  pull(district_no)
+
+# Apply all exclusion rules and process data
+final_data <- final_data_raw %>%
+  drop_na(value) %>%
+  filter(district_no %in% final_data_no_gap) %>%
+  filter(year %in% required_years & var == 'ww' & measure == 'yield') %>%
+  mutate(
+    district_no = sub("^0+", "", district_no) # Remove leading zeros
+  ) %>%
+  separate(district, into = c('state', 'station'), sep = ', ') %>%
+  left_join(geo_data, by = c('district_no' = 'kreis_code')) %>%
+  select(-c(outlier, land_code))
+
+# Save the filtered data
+write.csv(final_data, "Final_data_Station.csv", row.names = FALSE)
+
+# Define the function to get the nearest station (Ensure nearbyStations() exists)
+get_station_id <- function(lat_, lon_, statname_, radius_ = 100) {
+  print(i)
+  i <<- i + 1
+  
+  # Retrieve the list of nearby stations 
+  coord_list_raw <- nearbyStations(
+    lat = lat_,
+    lon = lon_,
+    radius = radius_,
+    res = c("daily"),
+    var = c("kl"),
+    mindate = as.Date("2022-01-01"),
+    statname = statname_
+  )
+  
+  if (is.null(coord_list_raw)) return(NULL)
+  
+  # Processing the retrieved data
+  coord_list <- sortDF(coord_list_raw, "var")
+  coord_list <- coord_list[!duplicated(paste0(coord_list$Stations_id, coord_list$res)),]
+  coord_list <- sortDF(coord_list, "res")
+  coord_list <- sortDF(coord_list, "dist", decreasing = FALSE)
+  rownames(coord_list) <- NULL
+  
+  # Create dataframe with desired columns
+  coord_df <- coord_list %>%
+    data.frame() %>%
+    rename_all(~tolower(.x)) %>%
+    filter(!is.na(stations_id)) %>%
+    rename(kreis_code = stationsname) %>%
+    mutate(kreis_code_in = statname_) %>%
+    select(stations_id, von_datum, bis_datum, geobreite, geolaenge, kreis_code, res, var, per, dist, kreis_code_in) %>%
+    arrange(desc(bis_datum), dist)
+  
+  return(coord_df)
+}
+
+# Extract Station ID
+i <- 1
+stations_df <- final_data %>%
+  select(district_no, geo_point_lang, geo_point_latd) %>%
+  rename(lon_ = geo_point_lang,
+         lat_ = geo_point_latd,
+         statname_ = district_no) %>%
+  distinct() %>%
+  as.list() %>%
+  pmap(get_station_id) %>%
+  bind_rows() %>%
+  tibble()
+
+# Merge and save the stations data
+stations_df %>%
+  select(stations_id, von_datum, bis_datum, geobreite, geolaenge, kreis_code, res, var, per, dist, kreis_code_in) %>%
+  right_join(final_data %>% select(district_no, state) %>% distinct(),
+             by = c('kreis_code_in' = 'district_no')) %>%
+  write_csv('stations_df_all.csv')# Load necessary libraries
+
+
+# Step 1: Read the CSV files
+allstations_temp <- read_csv("allstations_temp.csv")
+allstations_rain <- read_csv("allstations_rain.csv")
+
+# Step 2: Extract station IDs from the temperature and rainfall data
+temp_station_ids <- colnames(allstations_temp)[-1]  # Exclude the date column
+rain_station_ids <- colnames(allstations_rain)[-1]  # Exclude the date column
+
+# Step 3: Combine and summarize station IDs
+all_station_ids <- unique(c(temp_station_ids, rain_station_ids))
+
+# Step 4: Create a data frame for summary
+station_summary <- data.frame(
+  Station_ID = all_station_ids,
+  In_Temperature = all_station_ids %in% temp_station_ids,
+  In_Rainfall = all_station_ids %in% rain_station_ids
+)
+
+# Step 5: Save the general summary information to a CSV file
+write_csv(station_summary, "station_summary_all.csv")
+
+# Step 6: Filter the summary to include only stations with both In_Temperature and In_Rainfall as TRUE
+filtered_station_summary <- station_summary %>%
+  filter(In_Temperature == TRUE, In_Rainfall == TRUE)
+
+# Step 7: Save the filtered summary to a CSV file
+write_csv(filtered_station_summary, "station_summary.csv")
+
+
+# Keave just Stations that are in both files
+station_summary <- read.csv("station_summary.csv")
+stations_df_all <- read.csv("stations_df_all.csv")
+
+# Filter stations_df_all to include only stations present in station_summary
+filtered_stations_df <- stations_df_all %>%
+  filter(stations_id %in% station_summary$Station_ID)
+
+# Save the filtered dataframe to a new CSV file
+write.csv(filtered_stations_df, "filtered_stations_df_all.csv", row.names = FALSE)
+
+
+# Define file paths
+stations_df_all_path <- 'stations_df_all.csv'
+station_summary_path <- 'station_summary.csv'
+filtered_stations_output_path <- 'filtered_stations_df_all.csv'
+
+# Read the CSV files
+stations_df_all <- read_csv(stations_df_all_path)
+station_summary <- read_csv(station_summary_path)
+
+# Convert column names to lower case for consistency
+colnames(stations_df_all) <- tolower(colnames(stations_df_all))
+colnames(station_summary) <- tolower(colnames(station_summary))
+
+# Filter the data to include only stations present in station_summary
+filtered_stations_df_all <- stations_df_all %>%
+  filter(stations_id %in% station_summary$station_id)
+
+# Sort the filtered dataframe by 'kreis_code_in' and then by 'dist'
+sorted_filtered_stations_df_all <- filtered_stations_df_all %>%
+  arrange(kreis_code_in, dist)
+
+# Save the sorted filtered dataframe to a new CSV file
+write_csv(sorted_filtered_stations_df_all, filtered_stations_output_path)
+
+cat("Data saved to", filtered_stations_output_path, "\n")# Load necessary libraries
+library(dplyr)
+
+# Load the CSV files
+stations_df <- read.csv('filtered_stations_df_all.csv')
+data_df <- read.csv('filtered_data_detrended.csv')
+
+# For each district, select the nearest station
+nearest_stations_df <- stations_df %>%
+  group_by(kreis_code_in) %>%
+  slice_min(order_by = dist, n = 1) %>%
+  ungroup()
+
+# Merge the datasets on 'kreis_code_in' and 'district_no'
+merged_df <- data_df %>%
+  left_join(nearest_stations_df %>% select(kreis_code_in, stations_id, geobreite, geolaenge), 
+            by = c("district_no" = "kreis_code_in"))
+
+# Convert 'stations_id' to integer to remove the '.0'
+merged_df$stations_id <- as.integer(merged_df$stations_id)
+
+# Save the updated dataframe to a new CSV file
+write.csv(merged_df, 'final_data_with_station_IDs.csv', row.names = FALSE)
+
+# Display the merged dataframe to the user (optional, for your reference)
+print(head(merged_df))# Load necessary libraries
+
+# Load necessary libraries
+library(dplyr)
+library(lubridate)
+
+# Load the data
+temp_data <- read.csv("allstations_temp.csv")
+rain_data <- read.csv("allstations_rain.csv")
+
+# Convert the date column to Date type
+temp_data$Date <- dmy(temp_data$Stations_id)
+rain_data$Date <- dmy(rain_data$Stations_id)
+
+# Define the periods of interest
+periods <- list(
+
+    "3:3" = 3:3,
+    "3:4" = 3:4,
+    "3:5" = 3:5,
+    "3:6" = 3:6,
+    "3:7" = 3:7,
+    "3:8" = 3:8,
+    "3:9" = 3:9,
+    "3:10" = 3:10,
+    "4:4" = 4:4,
+    "4:5" = 4:5,
+    "4:6" = 4:6,
+    "4:7" = 4:7,
+    "4:8" = 4:8,
+    "4:9" = 4:9,
+    "4:10" = 4:10,
+    "5:5" = 5:5,
+    "5:6" = 5:6,
+    "5:7" = 5:7,
+    "5:8" = 5:8,
+    "5:9" = 5:9,
+    "5:10" = 5:10,
+    "6:6" = 6:6,
+    "6:7" = 6:7,
+    "6:8" = 6:8,
+    "6:9" = 6:9,
+    "6:10" = 6:10,
+    "7:7" = 7:7,
+    "7:8" = 7:8,
+    "7:9" = 7:9,
+    "7:10" = 7:10,
+    "8:8" = 8:8,
+    "8:9" = 8:9,
+    "8:10" = 8:10,
+    "9:9" = 9:9,
+    "9:10" = 9:10,
+    "10:10" = 10:10
+  )
+
+# Function to calculate statistics for a given period
+calculate_stats <- function(temp_data, rain_data, start_month, end_month) {
+  temp_data_filtered <- temp_data %>%
+    filter(month(Date) >= start_month & month(Date) <= end_month)
+  
+  rain_data_filtered <- rain_data %>%
+    filter(month(Date) >= start_month & month(Date) <= end_month)
+  
+  temp_stats <- temp_data_filtered %>%
+    group_by(year = year(Date)) %>%
+    summarise(across(-c(Stations_id, Date), mean, na.rm = TRUE)) %>%
+    mutate(period = paste0(start_month, ":", end_month))
+  
+  rain_stats <- rain_data_filtered %>%
+    group_by(year = year(Date)) %>%
+    summarise(across(-c(Stations_id, Date), sum, na.rm = TRUE)) %>%
+    mutate(period = paste0(start_month, ":", end_month))
+  
+  return(list(temp_stats = temp_stats, rain_stats = rain_stats))
+}
+
+# Initialize data frames to store all results
+all_temp_results <- data.frame()
+all_rain_results <- data.frame()
+
+# Calculate statistics for each period and concatenate the results
+for (period in names(periods)) {
+  months <- periods[[period]]
+  start_month <- min(months)
+  end_month <- max(months)
+  
+  stats <- calculate_stats(temp_data, rain_data, start_month, end_month)
+  temp_stats <- stats$temp_stats %>% select(year, period, everything())
+  rain_stats <- stats$rain_stats %>% select(year, period, everything())
+  
+  all_temp_results <- bind_rows(all_temp_results, temp_stats)
+  all_rain_results <- bind_rows(all_rain_results, rain_stats)
+}
+
+# Remove "X_" from column names if present
+colnames(all_temp_results) <- gsub("^X", "", colnames(all_temp_results))
+colnames(all_rain_results) <- gsub("^X", "", colnames(all_rain_results))
+
+# Write the combined results to single CSV files
+write.csv(all_temp_results, "all_temp_results.csv", row.names = FALSE)
+write.csv(all_rain_results, "all_rain_results.csv", row.names = FALSE)
+
+# Notify the user
+cat("Combined results have been saved to all_temp_results.csv and all_rain_results.csv.\n")
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+
+# Load the datasets with headers correctly identified
+final_data_with_station_IDs <- read.csv("final_data_with_station_IDs.csv")
+all_rain_results <- read.csv("all_rain_results.csv", header = TRUE, check.names = FALSE)
+all_temp_results <- read.csv("all_temp_results.csv", header = TRUE, check.names = FALSE)
+
+# Reshape the all_rain_results to have station IDs as a column
+all_rain_results_melted <- all_rain_results %>%
+  gather(key = "stations_id", value = "IR", -year, -period) %>%
+  mutate(stations_id = as.numeric(as.character(stations_id)))
+
+# Check unique values and types for debugging
+str(final_data_with_station_IDs)
+str(all_rain_results_melted)
+
+# Merge final_data_with_station_IDs with all_rain_results_melted
+merged_data <- final_data_with_station_IDs %>%
+  left_join(all_rain_results_melted, by = c("year", "stations_id"))
+
+# Check the result of the first merge
+str(merged_data)
+
+# Reshape the all_temp_results to have station IDs as a column
+all_temp_results_melted <- all_temp_results %>%
+  gather(key = "stations_id", value = "IT", -year, -period) %>%
+  mutate(stations_id = as.numeric(as.character(stations_id)))
+
+# Check unique values and types for debugging
+str(all_temp_results_melted)
+
+# Merge the previously merged data with all_temp_results_melted
+final_merged_data <- merged_data %>%
+  left_join(all_temp_results_melted, by = c("year", "stations_id", "period"))
+
+# Check the result of the second merge
+str(final_merged_data)
+
+# Select relevant columns and rename them to match the example provided
+final_merged_data <- final_merged_data %>%
+  select(district_no, year, stations_id, value, period, IR, IT) %>%
+  rename(Yield = value, Correlation = period)
+
+# View the final merged data
+print(head(final_merged_data))
+
+# Save the final merged data to a CSV file
+write.csv(final_merged_data, "final_merged_data.csv", row.names = FALSE)
+
+# Clear the workspace
+rm(list = ls())
+
+# Load required packages
+library(dplyr)
+library(broom)
+library(lme4)
+library(lmerTest)
+library(purrr)
+library(tidyr)
+library(stringr)
+
+# Load  data (adjust the path as necessary)
+df_raw <- read.csv('final_merged_data.csv')
+
+# Verify the type and structure of df_raw
+if (!is.data.frame(df_raw)) {
+  stop("The object 'df_raw' is not a data frame. Please check your data loading process.")
+}
+
+# Inspect the first few rows and structure
+print(head(df_raw))
+str(df_raw)
+
+# Print column names to verify
+print(names(df_raw))
+
+# Rename columns if necessary (update the names to match your data)
+df <- df_raw %>%
+  rename(
+    IR_t = `IR`,        # Update to actual column names if different
+    IT_t = `IT`,        # Update to actual column names if different
+    Y_t = `Yield`,      # Update to actual column names if different
+    stations = `stations_id`, # Update to actual column names if different
+    Year = `year` ,      # Update to actual column names if different
+    accumulation_period = Correlation
+  )
+
+# Check column names after renaming
+print(names(df))
+
+# Proceed only if all required columns are present
+required_columns <- c("IR_t", "IT_t", "Y_t", "stations", "Year")
+missing_columns <- setdiff(required_columns, names(df))
+if (length(missing_columns) > 0) {
+  stop(paste("The following required columns are missing:", paste(missing_columns, collapse = ", ")))
+}
+
+# Remove rows with NA values in columns
+df <- df %>%
+  filter(!is.na(IR_t) & !is.na(IT_t) & !is.na(Y_t))
+
+# Recreate additional columns
+df <- df %>%
+  mutate(IR_t_squared = IR_t^2,
+         IT_t_squared = IT_t^2,
+         IR_t_IT_t = IR_t * IT_t)
+
+# Check for any remaining NA values in the new columns
+na_check <- df %>%
+  summarise(across(c(IR_t, IT_t, IR_t_squared, IT_t_squared, IR_t_IT_t, Y_t), ~ sum(is.na(.))))
+print(na_check)
+
+# Print group sizes
+group_sizes <- df %>%
+  group_by(stations) %>%
+  summarise(count = n())
+print(group_sizes)
+
+# Debug data for each group
+df %>%
+  group_by(district_no, accumulation_period) %>%
+  do({
+    cat("Group:", unique(.$stations), "\n")
+    print(head(.))
+    .
+  })
+
+# Separate Models for Each station
+models_stations <- df %>%
+  group_by(district_no, accumulation_period) %>%
+  do({
+    data <- .
+    if (nrow(data) > 0) { # Ensure there is data to model
+      model <- lm(Y_t ~ IR_t + IT_t + IR_t_squared + IT_t_squared + IR_t_IT_t, data = data)
+      tidy(model) %>%
+        mutate(district_no = unique(data$district_no)) # Add station identifier to each result
+    } else {
+      tibble() # Return an empty tibble if no data
+    }
+  })
+
+# Print summaries of models for each station
+print(models_stations)
+
+# Write the coefficients to a CSV file
+write.csv(models_stations, 'models_stations_coefficients.csv', row.names = FALSE)
+
+df_with_coef <- df %>% 
+  left_join(models_stations, by=c("district_no", "accumulation_period"))
+
+models_stations_wider <- models_stations %>% 
+  select(c(1, 2, 3, 7)) %>% 
+  mutate(term = str_replace_all(term, "[()]", ""),
+         term = paste0(term, '_coef')) %>% 
+  pivot_wider(id_cols = c('accumulation_period','district_no'),
+              names_from = 'term', values_from = 'estimate')
+
+df_with_coef <- df %>% 
+  tibble() %>%
+  inner_join(models_stations_wider, by=c("district_no", "accumulation_period"))
+
+df_with_coef %>% glimpse()
+
+df_with_coef <- df_with_coef %>%
+  mutate(prediction = Intercept_coef +
+           IR_t_coef * IR_t +
+           IT_t_coef * IT_t +
+           IR_t_squared_coef * IR_t_squared +
+           IT_t_squared_coef * IT_t_squared +
+           IR_t_IT_t_coef * IR_t_IT_t)
+
+df_lbl <- df_with_coef %>% 
+  group_split(district_no, accumulation_period) %>% 
+  map_dfr(~ .x %>% select(district_no, accumulation_period) %>% distinct())
+
+df_corr <-df_with_coef %>% 
+  group_split(district_no, accumulation_period) %>% 
+  map_dfr( ~ .x %>% select(Y_t, prediction) %>% cor() %>% data.frame() %>% 
+             select(prediction) %>% slice(1) %>% rename(coef_=prediction))
+
+df_lbl$corrcoef_ <- df_corr$coef_
+df_corr <- df_lbl
+
+df_corr$corrcoef_ %>% min() # No negative coefficient
+
+best_corr_per_district <- df_corr %>%
+  group_split(district_no) %>%
+  map(~ .x %>% arrange(desc(corrcoef_)) %>% slice(1)) %>%
+  bind_rows()
+
+# Display the best correlations
+print(best_corr_per_district)
+
+# Save the best correlations to a CSV file
+write.csv(best_corr_per_district, 'best_corr_per_district.csv', row.names = FALSE)
+df_chosen_acc <- df_corr %>% group_split(district_no) %>% 
+  map(~ .x %>% arrange(desc(corrcoef_)) %>% slice(1)) %>% 
+  do.call(what=bind_rows) %>% 
+  select(-corrcoef_)
+
+
+df_chosen_acc <- df_chosen_acc %>% 
+  left_join(df, by=c('district_no','accumulation_period'))
+
+
+df_chosen_acc_with_pred <- df_chosen_acc %>% 
+  tibble() %>%
+  inner_join(models_stations_wider, by=c("district_no", "accumulation_period")) %>% 
+  mutate(
+    IR_t_squared = IR_t^2,
+    IT_t_squared = IT_t^2,
+    IR_t_IT_t = IR_t * IT_t,
+    prediction = Intercept_coef +
+      IR_t_coef * IR_t +
+      IT_t_coef * IT_t +
+      IR_t_squared_coef * IR_t_squared +
+      IT_t_squared_coef * IT_t_squared +
+      IR_t_IT_t_coef * IR_t_IT_t
+  ) %>% 
+  select(district_no:IT_t, prediction)
+
+write.csv(df_chosen_acc_with_pred, 'district_wi.csv', row.names=FALSE)
+
+
+# Load required libraries
+library(tidyverse)
+library(boot)
+
+
+# Step 1: Load the data
+district_wi <- read_csv('district_wi.csv')
+
+# Step 2: Calculate the district-level strike levels for indices
+district_wi <- district_wi %>%
+  group_by(district_no) %>%
+  mutate(
+    strike_level_mixed = mean(prediction, na.rm = TRUE),  # Strike level for mixed index
+    strike_level_IT = mean(IT_t, na.rm = TRUE),           # Strike level for temperature index
+    strike_level_IR = mean(IR_t, na.rm = TRUE)            # Strike level for rainfall index
+  ) %>%
+  ungroup()
+
+# Step 3: Calculate the call option payouts for indices
+df_deriv_dist_call <- district_wi %>%
+  rowwise() %>%
+  mutate(
+    n_call_IT = max(IT_t - strike_level_IT, 0),    # Call option payout for temperature index
+    n_call_IR = max(IR_t - strike_level_IR, 0),    # Call option payout for rainfall index
+    n_call_mixed = max(prediction - strike_level_mixed, 0),   # Call option payout for mixed index
+    n_IT = n_call_IT,  # Use only call option for temperature
+    n_IR = n_call_IR,  # Use only call option for rainfall
+    n_mixed = n_call_mixed # Use only call option for mixed index
+  )
+
+# Save the call option results
+write_csv(df_deriv_dist_call, 'tailored_call_options.csv')
+
+# Display the first few rows of the result
+print(head(df_deriv_dist_call))
+
+# Step 4: Define the number of bootstrap iterations and parameters
+n_iterations <- 10000  # Number of bootstrap iterations
+r <- 0.05  # 5% risk-free rate
+years <- 15  # Time period from 2006 to 2021
+ci_level <- 0.95  # Confidence interval level
+beta <- (1 - ci_level) / 2
+
+# Step 5: Define the mean function for bootstrapping
+mean_func <- function(data_, indices) {
+  return(mean(data_[indices], na.rm = TRUE)) # Calculate the mean for the bootstrap sample
+}
+
+# Step 6: Perform bootstrap resampling for call options
+bootstrap_results_call <- boot(df_deriv_dist_call$n_mixed, statistic = mean_func, R = n_iterations)
+
+# Step 7: Calculate the mean of the bootstrap samples for call options
+bootstrap_means_call <- bootstrap_results_call$t
+expected_payout_call <- mean(bootstrap_means_call)
+
+# Step 8: Discount the expected payout to present value using the risk-free rate
+fair_premium_call <- expected_payout_call / (1 + r) ^ years
+
+# Assign the fair premium to the dataframe
+df_deriv_dist_call$fair_premium <- fair_premium_call
+
+# Plot histogram of bootstrap means for call options
+hist(bootstrap_means_call, breaks = 30, xlab = 'Mean Payout', border = 'white', main = "Histogram of Bootstrap Means (Call Option)")
+
+# Add a vertical line at the mean fair premium
+abline(v = fair_premium_call, col = 'red', lwd = 2)
+
+# Step 9: Calculate confidence intervals for call options
+ci_lo_call <- quantile(bootstrap_results_call$t, beta)
+ci_up_call <- quantile(bootstrap_results_call$t, ci_level + beta)
+
+cat("Bootstrap Mean (Call Option):", fair_premium_call, "\n")
+cat(ci_level * 100, "% Confidence Interval (Call Option):", ci_lo_call, ci_up_call, "\n")
+
+# Step 10: Calculate z and revenue for call options
+calc_revenue <- function(df_) {
+  cov_ <- cov(df_$yt_price, df_$n_mixed)
+  var_ <- var(df_$n_mixed)
+  z <- -cov_ / var_
+  return(z)
+}
+
+# Apply the revenue calculation to each district
+df_deriv_dist_call <- df_deriv_dist_call %>%
+  mutate(yt_price = Y_t * 16) %>%  # Calculate yt_price as Y_t * 16
+  group_by(district_no) %>%
+  mutate(z = calc_revenue(cur_data())) %>%
+  ungroup()
+
+# Calculate revenue using the derived z and fair premium for call options
+df_deriv_dist_call <- df_deriv_dist_call %>%
+  mutate(revenue = Y_t * 16 + z * n_mixed - z * fair_premium)
+
+# Step 11: Calculate standard deviation and hedging effectiveness
+std_without_call <- aggregate(yt_price ~ district_no, df_deriv_dist_call, sd)
+std_with_call <- aggregate(revenue ~ district_no, df_deriv_dist_call, sd)
+
+# Combine the standard deviations into a single data frame
+results_call <- merge(std_without_call, std_with_call, by = "district_no")
+names(results_call) <- c("district", "Std_Without", "Std_With")
+
+# Calculate hedging effectiveness for each district
+results_call$Hedging_Effectiveness <- (results_call$Std_Without - results_call$Std_With) / results_call$Std_Without * 100
+
+# Display the standard deviations and hedging effectiveness
+print("Standard deviations and hedging effectiveness for each district (Call Option):")
+print(results_call)
+
+# Step 12: Perform a paired t-test on the revenues with and without derivatives
+t_test_results_call <- t.test(df_deriv_dist_call$yt_price, df_deriv_dist_call$revenue, paired = TRUE)
+
+# Display the results of the t-test
+print("Paired t-test results (Call Option):")
+print(t_test_results_call)
+
+# Step 13: Save the results for call options
+df_deriv_dist_call %>% write_csv('deriv_dist_fair_premium_call_options.csv')
+
+# Save the hedging effectiveness results
+results_call %>% write_csv('Tailored_hedging_same_stations.csv')
+
+# Step 14: Generate summary statistics for call options
+summary_table_call <- df_deriv_dist_call %>%
+  group_by(district_no) %>%
+  summarise(
+    Average = mean(n_mixed, na.rm = TRUE),
+    Minimum = min(n_mixed, na.rm = TRUE),
+    Maximum = max(n_mixed, na.rm = TRUE),
+    SD = sd(n_mixed, na.rm = TRUE)
+  ) %>%
+  rename(`Kreis Code` = district_no,
+         `Average (%)` = Average,
+         `Minimum (%)` = Minimum,
+         `Maximum (%)` = Maximum,
+         `SD (%)` = SD)
+
+# Display the summary table for call options
+print(summary_table_call)
+
+# Step last: Perform paired t-test between 'yt_price' (without derivatives) and 'revenue' (with derivatives)
+t_test_results <- t.test(df_deriv_dist_call$yt_price, df_deriv_dist_call$revenue, paired = TRUE)
+
+# Display t-test results
+cat("\nPaired t-test Results:\n")
+cat("Mean difference:", t_test_results$estimate, "\n")
+cat("t-value:", t_test_results$statistic, "\n")
+cat("Degrees of freedom:", t_test_results$parameter, "\n")
+cat("p-value:", t_test_results$p.value, "\n")
+cat("Confidence Interval (95%):", t_test_results$conf.int, "\n\n")
+
+# Calculate Confidence Intervals for Revenue with and without Derivatives
+# Confidence intervals for yt_price (without derivatives)
+ci_yt_price <- quantile(df_deriv_dist
+                        
