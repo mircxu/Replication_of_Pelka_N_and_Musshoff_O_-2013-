@@ -573,7 +573,7 @@ df_chosen_acc_with_pred <- df_chosen_acc %>%
   select(district_no:IT_t, prediction)
 
 # Save the final dataframe with predictions
-write.csv(df_chosen_acc_with_pred, 'district_wi_diff_diff.csv', row.names=FALSE)
+write.csv(df_chosen_acc_with_pred, 'district_wi_diff.csv', row.names=FALSE)
 
 # Load required libraries
 library(tidyverse)
@@ -694,7 +694,7 @@ print(t_test_results_call)
 df_deriv_dist_call %>% write_csv('deriv_dist_fair_premium_call_optionsdifferent weather stations.csv')
 
 # Save the hedging effectiveness results
-results_call %>% write_csv('Tailored_hedging_effectiveness_call_different weather stations.csv')
+results_call %>% write_csv('Tailored_hedging_different_stations.csv')
 
 # Step 14: Generate summary statistics for call options
 summary_table_call <- df_deriv_dist_call %>%
@@ -713,3 +713,23 @@ summary_table_call <- df_deriv_dist_call %>%
 
 # Display the summary table for call options
 print(summary_table_call)
+
+
+# Step last: Perform paired t-test between 'yt_price' (without derivatives) and 'revenue' (with derivatives)
+t_test_results <- t.test(df_deriv_dist_call$yt_price, df_deriv_dist_call$revenue, paired = TRUE)
+
+# Display t-test results
+cat("\nPaired t-test Results:\n")
+cat("Mean difference:", t_test_results$estimate, "\n")
+cat("t-value:", t_test_results$statistic, "\n")
+cat("Degrees of freedom:", t_test_results$parameter, "\n")
+cat("p-value:", t_test_results$p.value, "\n")
+cat("Confidence Interval (95%):", t_test_results$conf.int, "\n\n")
+
+# Calculate Confidence Intervals for Revenue with and without Derivatives
+# Confidence intervals for yt_price (without derivatives)
+ci_yt_price <- quantile(df_deriv_dist
+                        
+                        
+                        
+                        
