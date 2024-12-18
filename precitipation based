@@ -1,0 +1,105 @@
+# Load required libraries
+library(tidyverse)
+library(boot)
+
+# Step 1: Load the data
+district_wi <- read_csv('district_wi.csv')
+
+# Step 2: Calculate the strike levels for the precipitation-based index
+district_wi <- district_wi %>%
+  group_by(district_no) %>%
+  mutate(
+    strike_level_IR = mean(IR_t, na.rm = TRUE)  # Strike level for precipitation-based index
+  ) %>%
+  ungroup()
+
+# Step 3: Calculate the call option payouts for the precipitation-based index
+df_deriv_dist_call <- district_wi %>%
+  rowwise() %>%
+  mutate(
+    n_call_IR = max(IR_t - strike_level_IR, 0),  # Call option payout for precipitation index
+    n_IR = n_call_IR  # Use only the call option for precipitation index
+  )
+
+# Save the call option results for precipitation index
+write_csv(df_deriv_dist_call, 'tailored_call_options_precipitation.csv')
+
+# Display the first few rows of the result
+print(head(df_deriv_dist_call))
+
+# Step 4: Define the number of bootstrap iterations and parameters
+n_iterations <- 10000  # Number of bootstrap iterations
+r <- 0.05  # 5% risk-free rate
+years <- 15  # Time period from 2006 to 2021
+ci_level <- 0.95  # Confidence interval level
+beta <- (1 - ci_level) / 2
+
+# Step 5: Define the mean function for bootstrapping
+mean_func <- function(data_, indices) {
+  return(mean(data_[indices], na.rm = TRUE)) # Calculate the mean for the bootstrap sample
+}
+
+# Step 6: Perform bootstrap resampling for precipitation index
+bootstrap_results_precipitation <- boot(df_deriv_dist_call$n_IR, statistic = mean_func, R = n_iterations)
+
+# Step 7: Calculate the mean of the bootstrap samples for precipitation index
+bootstrap_means_precipitation <- bootstrap_results_precipitation$t
+expected_payout_precipitation <- mean(bootstrap_means_precipitation)
+
+# Step 8: Discount the expected payout to present value using the risk-free rate
+fair_premium_precipitation <- expected_payout_precipitation / (1 + r) ^ years
+
+# Assign the fair premium to the dataframe
+df_deriv_dist_call$fair_premium_IR <- fair_premium_precipitation
+
+# Plot histogram of bootstrap means for precipitation-based index
+hist(bootstrap_means_precipitation, breaks = 30, xlab = 'Mean Payout', border = 'white',
+     main = "Histogram of Bootstrap Means (Precipitation-Based Index)")
+abline(v = fair_premium_precipitation, col = 'red', lwd = 2)
+
+# Step 9: Calculate confidence intervals for precipitation-based index
+ci_lo_precipitation <- quantile(bootstrap_results_precipitation$t, beta)
+ci_up_precipitation <- quantile(bootstrap_results_precipitation$t, ci_level + beta)
+
+cat("Bootstrap Mean (Precipitation-Based Index):", fair_premium_precipitation, "\n")
+cat(ci_level * 100, "% Confidence Interval (Precipitation-Based Index):", ci_lo_precipitation, ci_up_precipitation, "\n")
+
+# Step 10: Calculate z and revenue for precipitation index
+calc_revenue <- function(df_, column_name) {
+  cov_ <- cov(df_$yt_price, df_[[column_name]])
+  var_ <- var(df_[[column_name]])
+  z <- -cov_ / var_
+  return(z)
+}
+
+# Apply the revenue calculation for precipitation-based index
+df_deriv_dist_call <- df_deriv_dist_call %>%
+  mutate(yt_price = Y_t * 16) %>%  # Calculate yt_price as Y_t * 16
+  group_by(district_no) %>%
+  mutate(
+    z_IR = calc_revenue(cur_data(), "n_IR"),
+    revenue_IR = Y_t * 16 + z_IR * n_IR - z_IR * fair_premium_IR
+  ) %>%
+  ungroup()
+
+# Step 11: Calculate standard deviation and hedging effectiveness for precipitation index
+std_without_IR <- aggregate(yt_price ~ district_no, df_deriv_dist_call, sd)
+std_with_IR <- aggregate(revenue_IR ~ district_no, df_deriv_dist_call, sd)
+
+# Combine the standard deviations into a single data frame
+results_IR <- merge(std_without_IR, std_with_IR, by = "district_no")
+names(results_IR) <- c("district_no", "Std_Without", "Std_With")
+
+# Calculate hedging effectiveness
+results_IR$Hedging_Effectiveness <- (results_IR$Std_Without - results_IR$Std_With) / 
+  results_IR$Std_Without * 100
+
+# Step 12: Save the results for precipitation-based index
+write_csv(results_IR, 'hedging_effectiveness_precipitation.csv')
+
+# Display the results
+print("Hedging effectiveness for Precipitation-Based Index:")
+print(results_IR)
+
+# Final Summary
+cat("\nHedging effectiveness and fair premium calculation for Precipitation-Based Index completed.\n")
