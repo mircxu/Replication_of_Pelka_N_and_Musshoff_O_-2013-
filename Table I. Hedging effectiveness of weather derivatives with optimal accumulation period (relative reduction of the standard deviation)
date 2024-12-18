@@ -1,0 +1,73 @@
+# Load required libraries
+library(tidyverse)
+library(gridExtra)
+library(grid)
+
+# Load all datasets
+precipitation <- read_csv('Hedging_Effectiveness_Precipitation.csv') %>% 
+  select(district_no, Hedging_Effectiveness) %>%
+  rename(Precipitation = Hedging_Effectiveness)
+
+temperature <- read_csv('Hedging_Effectiveness_Temperature.csv') %>% 
+  select(district_no, Hedging_Effectiveness) %>%
+  rename(Temperature = Hedging_Effectiveness)
+
+# Fix for Tailored_hedging_different_stations.csv (rename `district` to `district_no`)
+mixed_diff <- read_csv('Tailored_hedging_different_stations.csv') %>% 
+  rename(district_no = district) %>%
+  select(district_no, Hedging_Effectiveness) %>%
+  rename(Mixed_Different = Hedging_Effectiveness)
+
+# Fix for Tailored_hedging_same_stations.csv (rename `district` to `district_no`)
+mixed_same <- read_csv('Tailored_hedging_same_stations.csv') %>% 
+  rename(district_no = district) %>%
+  select(district_no, Hedging_Effectiveness) %>%
+  rename(Mixed_Same = Hedging_Effectiveness)
+
+two_simple <- read_csv('hedging_effectiveness_two_simple_indices.csv') %>% 
+  select(district_no, Hedging_Effectiveness) %>%
+  rename(Two_Simple = Hedging_Effectiveness)
+
+# Merge all datasets into one table by district_no
+merged_summary <- precipitation %>%
+  full_join(temperature, by = "district_no") %>%
+  full_join(mixed_diff, by = "district_no") %>%
+  full_join(mixed_same, by = "district_no") %>%
+  full_join(two_simple, by = "district_no") %>%
+  arrange(district_no)
+
+# Replace NA with zeros for better clarity
+merged_summary[is.na(merged_summary)] <- 0
+
+# Final formatting
+merged_summary_final <- merged_summary %>%
+  rename(
+    `District Number` = district_no,
+    `Column 1: Precipitation-based index (%)` = Precipitation,
+    `Column 2: Temperature-based index (%)` = Temperature,
+    `Column 3: Mixed index at two stations (%)` = Mixed_Different,
+    `Column 4: Mixed index at same station (%)` = Mixed_Same,
+    `Column 5: Two simple indices (%)` = Two_Simple
+  )
+
+# Save the formatted table to a CSV file
+write_csv(merged_summary_final, "district_summary_statistics.csv")
+
+# Display the final table
+print(merged_summary_final)
+
+# Step 2: Create a plot image of the summary table
+table_plot <- tableGrob(merged_summary_final, rows = NULL)  # Turn the table into a plot
+
+# Add a title to the table plot
+title <- textGrob("Summary Statistics Table by District Number", gp = gpar(fontsize = 14, fontface = "bold"))
+
+# Combine the title and table
+table_with_title <- grid.arrange(title, table_plot, nrow = 2, heights = c(0.1, 1))
+
+# Save the plot as an image (e.g., PNG file)
+png("district_summary_statistics.png", width = 1600, height = 1000, res = 200)
+grid.draw(table_with_title)
+dev.off()
+
+cat("Table and image have been saved successfully!\n")
