@@ -41,46 +41,46 @@ merged_summary[is.na(merged_summary)] <- 0
 merged_summary_final <- merged_summary %>%
   rename(
     `District Number` = district_no,
-    `Column 1: Precipitation-based index (%)` = Precipitation,
-    `Column 2: Temperature-based index (%)` = Temperature,
-    `Column 3: Mixed index at two stations (%)` = Mixed_Different,
-    `Column 4: Mixed index at same station (%)` = Mixed_Same,
-    `Column 5: Two simple indices (%)` = Two_Simple
+    `Precipitation-based index (%)` = Precipitation,
+    `Temperature-based index (%)` = Temperature,
+    `Mixed index at two stations (%)` = Mixed_Different,
+    `Mixed index at same station (%)` = Mixed_Same,
+    `Two simple indices (%)` = Two_Simple
   )
 
 # Step 2: Calculate summary statistics using reframe() and fix data types
 summary_stats <- reframe(
   merged_summary_final,
   `District Number` = c("Average", "Minimum", "Maximum", "SD"),
-  `Column 1: Precipitation-based index (%)` = c(
-    mean(`Column 1: Precipitation-based index (%)`, na.rm = TRUE),
-    min(`Column 1: Precipitation-based index (%)`, na.rm = TRUE),
-    max(`Column 1: Precipitation-based index (%)`, na.rm = TRUE),
-    sd(`Column 1: Precipitation-based index (%)`, na.rm = TRUE)
+  `Precipitation-based index (%)` = c(
+    mean(`Precipitation-based index (%)`, na.rm = TRUE),
+    min(`Precipitation-based index (%)`, na.rm = TRUE),
+    max(`Precipitation-based index (%)`, na.rm = TRUE),
+    sd(`Precipitation-based index (%)`, na.rm = TRUE)
   ),
-  `Column 2: Temperature-based index (%)` = c(
-    mean(`Column 2: Temperature-based index (%)`, na.rm = TRUE),
-    min(`Column 2: Temperature-based index (%)`, na.rm = TRUE),
-    max(`Column 2: Temperature-based index (%)`, na.rm = TRUE),
-    sd(`Column 2: Temperature-based index (%)`, na.rm = TRUE)
+  `Temperature-based index (%)` = c(
+    mean(`Temperature-based index (%)`, na.rm = TRUE),
+    min(`Temperature-based index (%)`, na.rm = TRUE),
+    max(`Temperature-based index (%)`, na.rm = TRUE),
+    sd(`Temperature-based index (%)`, na.rm = TRUE)
   ),
-  `Column 3: Mixed index at two stations (%)` = c(
-    mean(`Column 3: Mixed index at two stations (%)`, na.rm = TRUE),
-    min(`Column 3: Mixed index at two stations (%)`, na.rm = TRUE),
-    max(`Column 3: Mixed index at two stations (%)`, na.rm = TRUE),
-    sd(`Column 3: Mixed index at two stations (%)`, na.rm = TRUE)
+  `Mixed index at two stations (%)` = c(
+    mean(`Mixed index at two stations (%)`, na.rm = TRUE),
+    min(`Mixed index at two stations (%)`, na.rm = TRUE),
+    max(`Mixed index at two stations (%)`, na.rm = TRUE),
+    sd(`Mixed index at two stations (%)`, na.rm = TRUE)
   ),
-  `Column 4: Mixed index at same station (%)` = c(
-    mean(`Column 4: Mixed index at same station (%)`, na.rm = TRUE),
-    min(`Column 4: Mixed index at same station (%)`, na.rm = TRUE),
-    max(`Column 4: Mixed index at same station (%)`, na.rm = TRUE),
-    sd(`Column 4: Mixed index at same station (%)`, na.rm = TRUE)
+  `Mixed index at same station (%)` = c(
+    mean(`Mixed index at same station (%)`, na.rm = TRUE),
+    min(`Mixed index at same station (%)`, na.rm = TRUE),
+    max(`Mixed index at same station (%)`, na.rm = TRUE),
+    sd(`Mixed index at same station (%)`, na.rm = TRUE)
   ),
-  `Column 5: Two simple indices (%)` = c(
-    mean(`Column 5: Two simple indices (%)`, na.rm = TRUE),
-    min(`Column 5: Two simple indices (%)`, na.rm = TRUE),
-    max(`Column 5: Two simple indices (%)`, na.rm = TRUE),
-    sd(`Column 5: Two simple indices (%)`, na.rm = TRUE)
+  `Two simple indices (%)` = c(
+    mean(`Two simple indices (%)`, na.rm = TRUE),
+    min(`Two simple indices (%)`, na.rm = TRUE),
+    max(`Two simple indices (%)`, na.rm = TRUE),
+    sd(`Two simple indices (%)`, na.rm = TRUE)
   )
 )
 
@@ -96,3 +96,6 @@ final_table <- bind_rows(summary_stats, merged_summary_final)
 
 # Step 4: Save the final table to a CSV file
 write_csv(final_table, "final_summary_statistics_with_top_summary.csv")
+
+# Notify user of successful completion
+cat("CSV file 'final_summary_statistics_with_top_summary.csv' has been successfully created without 'Column 1', 'Column 2', etc., labels.\n")
