@@ -95,7 +95,7 @@ results_IR$Hedging_Effectiveness <- (results_IR$Std_Without - results_IR$Std_Wit
   results_IR$Std_Without * 100
 
 # Step 12: Save the results for precipitation-based index
-write_csv(results_IR, 'hedging_effectiveness_precipitation_std.csv')
+write_csv(results_IR, 'hedging_effectiveness_precipitation_st.csv')
 
 # Display the results
 print("Hedging effectiveness for Precipitation-Based Index:")
