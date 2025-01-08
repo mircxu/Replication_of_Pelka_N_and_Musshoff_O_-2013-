@@ -424,7 +424,7 @@ print(t_test_results_call)
 df_deriv_dist_call %>% write_csv('deriv_dist_fair_premium_call_options.csv')
 
 # Save the hedging effectiveness results
-results_call %>% write_csv('Std_hedging_effectiveness_call_same weather stations.csv')
+results_call %>% write_csv('St_hedging_effectiveness_call_same weather stations.csv')
 
 # Step 14: Generate summary statistics for call options
 summary_table_call <- df_deriv_dist_call %>%
