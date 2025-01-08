@@ -95,7 +95,7 @@ results_IT$Hedging_Effectiveness <- (results_IT$Std_Without - results_IT$Std_Wit
   results_IT$Std_Without * 100
 
 # Step 12: Save the results for temperature-based index
-write_csv(results_IT, 'hedging_effectiveness_temperature_std.csv')
+write_csv(results_IT, 'hedging_effectiveness_temperature_st.csv')
 
 # Display the results
 print("Hedging effectiveness for Temperature-Based Index:")
