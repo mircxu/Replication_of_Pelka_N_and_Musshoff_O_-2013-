@@ -13,8 +13,6 @@ library(readr)
 # Step 1: Read the CSV files
 allstations_temp <- read_csv("allstations_temp.csv")
 allstations_rain <- read_csv("allstations_rain.csv")
-
-# Load the CSV files
 stations_df <- read.csv('stations_df_all.csv')
 data_df <- read.csv('filtered_data_detrended.csv')
 
@@ -29,17 +27,19 @@ rain_stations_df <- stations_df %>%
 temp_stations_df <- stations_df %>%
   filter(as.character(stations_id) %in% temp_station_ids)
 
-# Step 4: Find the nearest station for rain for each district
+# Step 4: Find the second station for rain for each district
 nearest_rain_stations_df <- rain_stations_df %>%
-  group_by(kreis_code_in) %>%
-  slice_min(order_by = dist, n = 1) %>%
-  ungroup() %>%
+  group_by(kreis_code_in) %>%  # Group by district
+  arrange(dist) %>%            # Sort by distance within each district
+  slice(2) %>%                 # Select the second row (second nearest station)
+  ungroup() %>%                # Remove grouping
   rename(stations_id_rain = stations_id, geobreite_rain = geobreite, geolaenge_rain = geolaenge)
 
 # Step 5: Find the nearest station for temperature for each district
-nearest_temp_stations_df <- temp_stations_df %>%
+second_nearest_temp_stations_df <- temp_stations_df %>%
   group_by(kreis_code_in) %>%
-  slice_min(order_by = dist, n = 1) %>%
+  arrange(dist) %>%              # Sort by distance
+  slice(1) %>%                   # Select the second nearest
   ungroup() %>%
   rename(stations_id_temp = stations_id, geobreite_temp = geobreite, geolaenge_temp = geolaenge)
 
@@ -47,23 +47,10 @@ nearest_temp_stations_df <- temp_stations_df %>%
 merged_df <- data_df %>%
   left_join(nearest_rain_stations_df %>% select(kreis_code_in, stations_id_rain, geobreite_rain, geolaenge_rain), 
             by = c("district_no" = "kreis_code_in")) %>%
-  left_join(nearest_temp_stations_df %>% select(kreis_code_in, stations_id_temp, geobreite_temp, geolaenge_temp), 
+  left_join(second_nearest_temp_stations_df %>% select(kreis_code_in, stations_id_temp, geobreite_temp, geolaenge_temp), 
             by = c("district_no" = "kreis_code_in"))
 
-# Step 7: If rain and temperature stations are the same, find the next nearest temperature station
-merged_df <- merged_df %>%
-  rowwise() %>%
-  mutate(
-    stations_id_temp = ifelse(stations_id_rain == stations_id_temp, 
-                              temp_stations_df %>% 
-                                filter(kreis_code_in == district_no & stations_id != stations_id_rain) %>%
-                                slice_min(order_by = dist, n = 1) %>%
-                                pull(stations_id), 
-                              stations_id_temp)
-  ) %>%
-  ungroup()
-
-# Step 8: Remove unnecessary columns
+# Step 7: Remove unnecessary columns
 final_df <- merged_df %>%
   select(-geobreite_temp, -geolaenge_temp, -geobreite_rain, -geolaenge_rain)
 
@@ -71,8 +58,13 @@ final_df <- merged_df %>%
 final_df$stations_id_rain <- as.integer(final_df$stations_id_rain)
 final_df$stations_id_temp <- as.integer(final_df$stations_id_temp)
 
+
 # Save the updated dataframe to a new CSV file
 write.csv(final_df, 'final_data_with_different_station_IDs.csv', row.names = FALSE)
+
+# Display a message
+cat("Updated dataset saved as 'final_data_with_different_station_IDs.csv'\n")
+
 
 # Display the final dataframe to the user 
 print(head(final_df))
@@ -140,22 +132,64 @@ print(july_august_sum_long)
 write.csv(july_august_sum_long, "July_August_Sum_Rain_Years_Stations.csv", row.names = FALSE)
 
 # Load the datasets
-rain_data <- read.csv('July_August_Sum_Rain_Years_Stations.csv')
-temp_data <- read.csv('June_Avg_Temp_All_Years_Stations.csv')
-station_data <- read.csv('final_data_with_station_IDs.csv')
+rain_data <- read_csv("July_August_Sum_Rain_Years_Stations.csv")
+temp_data <- read_csv("June_Avg_Temp_All_Years_Stations.csv")
+final_data <- read_csv("final_data_with_different_station_IDs.csv")
 
-# Merging the datasets on `Year` and `station_id`/`stations_id`
-merged_data <- station_data %>%
-  left_join(rain_data, by = c("year" = "Year", "stations_id" = "station_id")) %>%
-  left_join(temp_data, by = c("year" = "Year", "stations_id" = "station_id"))
+# Step 1: Standardize column names and ensure consistent types
+rain_data <- rain_data %>%
+  rename(IR = July_Aug_Rain, year = Year, stations_id = station_id)
 
-# Removing specified columns and renaming the required columns
-final_data <- merged_data %>%
-  select(-district, -nuts_id, -geobreite,	-geolaenge) %>%
-  rename(IR = July_Aug_Rain, IT = June_Avg_Temp)
+temp_data <- temp_data %>%
+  rename(IT = June_Avg_Temp, year = Year, stations_id = station_id)
 
-# Saving the final dataset to a CSV file
-write.csv(final_data, 'merged_final_data_standartized.csv', row.names = FALSE)
+final_data <- final_data %>%
+  mutate(
+    stations_id_rain = as.numeric(stations_id_rain),
+    stations_id_temp = as.numeric(stations_id_temp)
+  )
+
+# Step 2: Link Rainfall Data (IR) by stations_id_rain
+final_with_rain <- final_data %>%
+  left_join(
+    rain_data,
+    by = c("year", "stations_id_rain" = "stations_id")
+  ) %>%
+  rename(IR = IR)
+
+# Step 3: Link Temperature Data (IT) by stations_id_temp
+final_with_rain_and_temp <- final_with_rain %>%
+  left_join(
+    temp_data,
+    by = c("year", "stations_id_temp" = "stations_id")
+  ) %>%
+  rename(IT = IT)
+
+# Step 4: Combine station IDs into a single column for clarity
+final_with_rain_and_temp <- final_with_rain_and_temp %>%
+  mutate(
+    stations_id_combined = str_trim(
+      paste(
+        ifelse(is.na(stations_id_rain), "", stations_id_rain),
+        ifelse(is.na(stations_id_temp), "", stations_id_temp),
+        sep = ", "
+      ),
+      side = "both"
+    )
+  )
+
+# Step 5: Select and reorder columns to match the desired format
+final_cleaned_data <- final_with_rain_and_temp %>%
+  select(
+    district_no, year, var, measure, value, slope,
+    Yield_Detrended_2021, stations_id_combined, IR, IT
+  )
+
+
+
+# Step 6: Save the cleaned dataset to a CSV file
+write_csv(final_cleaned_data, "merged_final_data_standartized.csv")
+
 
 # Clear the workspace
 rm(list = ls())
@@ -188,7 +222,7 @@ df <- df_raw %>%
     IR_t = `IR`,        # Update to actual column names if different
     IT_t = `IT`,        # Update to actual column names if different
     Y_t = `value`,  # Replace with the correct column name for Yield
-    stations = `stations_id`, # Update to actual column names if different
+    stations = `stations_id_combined`, # Update to actual column names if different
     Year = `year`       # Update to actual column names if different
   )
 
