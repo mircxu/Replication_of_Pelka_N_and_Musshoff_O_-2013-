@@ -620,28 +620,41 @@ print(summary_table_call)
 
 # Step last: Perform paired t-test between 'yt_price' (without derivatives) and 'revenue' (with derivatives)
 t_test_results <- t.test(df_deriv_dist_call$yt_price, df_deriv_dist_call$revenue, paired = TRUE)
+## Perform paired t-tests (both one-sided and two-sided)
+t_test_results_two_sided <- t.test(df_deriv_dist_call$n_IR, mu = 0, alternative = "two.sided", paired = FALSE)
+t_test_results_greater <- t.test(df_deriv_dist_call$n_IR, mu = 0, alternative = "greater", paired = FALSE)
+t_test_results_less <- t.test(df_deriv_dist_call$n_IR, mu = 0, alternative = "less", paired = FALSE)
 
-# Display t-test results
-cat("\nPaired t-test Results:\n")
-cat("Mean difference:", t_test_results$estimate, "\n")
-cat("t-value:", t_test_results$statistic, "\n")
-cat("Degrees of freedom:", t_test_results$parameter, "\n")
-cat("p-value:", t_test_results$p.value, "\n")
-cat("Confidence Interval (95%):", t_test_results$conf.int, "\n\n")
-
-
+# Write results to a text file
 writeLines(
   paste(
-    "Paired t-test results (Call Option):",
-    paste("t =", t_test_results_call$statistic),
-    paste("df =", t_test_results_call$parameter),
-    paste("p-value =", t_test_results_call$p.value),
+    "Paired t-test results (Two-Sided):",
+    paste("t =", t_test_results_two_sided$statistic),
+    paste("df =", t_test_results_two_sided$parameter),
+    paste("p-value =", t_test_results_two_sided$p.value),
     paste("95% confidence interval =", 
-          paste(t_test_results_call$conf.int[1], t_test_results_call$conf.int[2], sep = ", ")),
-    paste("Mean difference =", t_test_results_call$estimate),
+          paste(t_test_results_two_sided$conf.int[1], t_test_results_two_sided$conf.int[2], sep = ", ")),
+    paste("Mean difference =", t_test_results_two_sided$estimate),
+    "\n",
+    "Paired t-test results (One-Sided - Greater):",
+    paste("t =", t_test_results_greater$statistic),
+    paste("df =", t_test_results_greater$parameter),
+    paste("p-value =", t_test_results_greater$p.value),
+    paste("Confidence interval =", 
+          paste(t_test_results_greater$conf.int[1], t_test_results_greater$conf.int[2], sep = ", ")),
+    paste("Mean difference =", t_test_results_greater$estimate),
+    "\n",
+    "Paired t-test results (One-Sided - Less):",
+    paste("t =", t_test_results_less$statistic),
+    paste("df =", t_test_results_less$parameter),
+    paste("p-value =", t_test_results_less$p.value),
+    paste("Confidence interval =", 
+          paste(t_test_results_less$conf.int[1], t_test_results_less$conf.int[2], sep = ", ")),
+    paste("Mean difference =", t_test_results_less$estimate),
     sep = "\n"
   ),
   con = "paired_t_test_tailored_diff.txt"
 )
 
-
+# Final message
+cat("\nPaired t-tests (Two-Sided and One-Sided) completed. Results saved to 'paired_t_test_results_precipitation.txt'.\n")
