@@ -103,3 +103,19 @@ print(results_IR)
 
 # Final Summary
 cat("\nHedging effectiveness and fair premium calculation for Precipitation-Based Index completed.\n")
+
+writeLines(
+  paste(
+    "Paired t-test results (Call Option):",
+    paste("t =", t_test_results_call$statistic),
+    paste("df =", t_test_results_call$parameter),
+    paste("p-value =", t_test_results_call$p.value),
+    paste("95% confidence interval =", 
+          paste(t_test_results_call$conf.int[1], t_test_results_call$conf.int[2], sep = ", ")),
+    paste("Mean difference =", t_test_results_call$estimate),
+    sep = "\n"
+  ),
+  con = "paired_t_test_tailored_precitipation.txt"
+)
+
+
