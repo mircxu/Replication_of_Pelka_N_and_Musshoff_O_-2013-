@@ -1,0 +1,233 @@
+# Load necessary libraries
+library(tidyverse)
+library(lubridate)
+library(broom)
+library(boot)
+
+# Step 1: Load Data
+allstations_temp <- read_csv("allstations_temp.csv")
+allstations_rain <- read_csv("allstations_rain.csv")
+stations_df <- read.csv("stations_df_all.csv")
+data_df <- read.csv("filtered_data_detrended.csv")
+
+# Step 2: Prepare Rain and Temperature Data
+rain_station_ids <- gsub("X", "", names(allstations_rain)[-1])
+temp_station_ids <- gsub("X", "", names(allstations_temp)[-1])
+
+rain_stations_df <- stations_df %>%
+  filter(as.character(stations_id) %in% rain_station_ids)
+
+temp_stations_df <- stations_df %>%
+  filter(as.character(stations_id) %in% temp_station_ids)
+
+# Step 3: Select Second Nearest Rain Stations and Nearest Temp Stations for Each District
+nearest_rain_stations_df <- rain_stations_df %>%
+  group_by(kreis_code_in) %>%
+  arrange(dist) %>%
+  slice(2) %>%
+  ungroup() %>%
+  rename(stations_id_rain = stations_id, geobreite_rain = geobreite, geolaenge_rain = geolaenge)
+
+second_nearest_temp_stations_df <- temp_stations_df %>%
+  group_by(kreis_code_in) %>%
+  arrange(dist) %>%
+  slice(1) %>%
+  ungroup() %>%
+  rename(stations_id_temp = stations_id, geobreite_temp = geobreite, geolaenge_temp = geolaenge)
+
+# Step 4: Merge Station Data with District Data
+merged_df <- data_df %>%
+  left_join(nearest_rain_stations_df %>% select(kreis_code_in, stations_id_rain, geobreite_rain, geolaenge_rain), 
+            by = c("district_no" = "kreis_code_in")) %>%
+  left_join(second_nearest_temp_stations_df %>% select(kreis_code_in, stations_id_temp, geobreite_temp, geolaenge_temp), 
+            by = c("district_no" = "kreis_code_in"))
+
+# Remove unnecessary columns and save as final dataset
+final_df <- merged_df %>%
+  select(-geobreite_temp, -geolaenge_temp, -geobreite_rain, -geolaenge_rain) %>%
+  mutate(
+    stations_id_rain = as.integer(stations_id_rain),
+    stations_id_temp = as.integer(stations_id_temp)
+  )
+write.csv(final_df, "final_data_with_different_station_IDs.csv", row.names = FALSE)
+
+# Step 5: Link and Prepare Rain and Temperature Data
+rain_data <- allstations_rain %>%
+  mutate(Date = as.Date(Stations_id, format = "%d.%m.%Y")) %>%
+  filter(month(Date) %in% c(7, 8)) %>%
+  group_by(year = year(Date)) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>%
+  pivot_longer(cols = -year, names_to = "stations_id", values_to = "IR") %>%
+  mutate(stations_id = as.numeric(gsub("X", "", stations_id)))
+
+temp_data <- allstations_temp %>%
+  mutate(Date = as.Date(Stations_id, format = "%d.%m.%Y")) %>%
+  filter(month(Date) == 6) %>%
+  group_by(year = year(Date)) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE)) %>%
+  pivot_longer(cols = -year, names_to = "stations_id", values_to = "IT") %>%
+  mutate(stations_id = as.numeric(gsub("X", "", stations_id)))
+
+final_data <- read_csv("final_data_with_different_station_IDs.csv") %>%
+  mutate(
+    stations_id_rain = as.numeric(stations_id_rain),
+    stations_id_temp = as.numeric(stations_id_temp)
+  )
+
+# Join Rain and Temperature Data
+final_with_rain <- final_data %>%
+  left_join(rain_data, by = c("year", "stations_id_rain" = "stations_id")) %>%
+  rename(IR = IR)
+
+final_with_rain_and_temp <- final_with_rain %>%
+  left_join(temp_data, by = c("year", "stations_id_temp" = "stations_id")) %>%
+  rename(IT = IT)
+
+# Step 6: Model for Both Indices
+df <- final_with_rain_and_temp %>%
+  filter(!is.na(IR) & !is.na(IT) & !is.na(value)) %>%
+  rename(Y_t = value) %>%
+  mutate(
+    IR_t_squared = IR^2,
+    IT_t_squared = IT^2
+  )
+
+# Fit Models for Temperature and Precipitation
+models_stations_temp <- df %>%
+  group_by(district_no) %>%
+  do({
+    data <- .
+    if (nrow(data) > 0) {
+      model <- lm(Y_t ~ IT + I(IT^2), data = data)
+      tidy(model) %>%
+        mutate(district_no = unique(data$district_no))
+    } else {
+      tibble()
+    }
+  })
+
+models_stations_precip <- df %>%
+  group_by(district_no) %>%
+  do({
+    data <- .
+    if (nrow(data) > 0) {
+      model <- lm(Y_t ~ IR + I(IR^2), data = data)
+      tidy(model) %>%
+        mutate(district_no = unique(data$district_no))
+    } else {
+      tibble()
+    }
+  })
+
+# Save Model Coefficients
+write.csv(models_stations_temp, "models_stations_temp.csv", row.names = FALSE)
+write.csv(models_stations_precip, "models_stations_precip.csv", row.names = FALSE)
+
+# Add Predictions for Each Index
+df_with_predictions <- df %>%
+  left_join(models_stations_temp %>% select(district_no, term, estimate) %>%
+              pivot_wider(names_from = term, values_from = estimate) %>%
+              rename(
+                Intercept_temp = `(Intercept)`,
+                IT_coef = IT,
+                IT_squared_coef = `I(IT^2)`
+              ), by = "district_no") %>%
+  mutate(
+    prediction_temp = Intercept_temp + IT_coef * IT + IT_squared_coef * IT^2
+  ) %>%
+  left_join(models_stations_precip %>% select(district_no, term, estimate) %>%
+              pivot_wider(names_from = term, values_from = estimate) %>%
+              rename(
+                Intercept_precip = `(Intercept)`,
+                IR_coef = IR,
+                IR_squared_coef = `I(IR^2)`
+              ), by = "district_no") %>%
+  mutate(
+    prediction_precip = Intercept_precip + IR_coef * IR + IR_squared_coef * IR^2
+  )
+
+# Save Predictions
+write.csv(df_with_predictions, "district_predictions_combined.csv", row.names = FALSE)
+
+# Step 7: Calculate Strike Levels and Call Option Payouts
+df_with_predictions <- df_with_predictions %>%
+  group_by(district_no) %>%
+  mutate(
+    strike_level_temp = mean(IT, na.rm = TRUE),
+    strike_level_precip = mean(IR, na.rm = TRUE)
+  ) %>%
+  rowwise() %>%
+  mutate(
+    n_call_temp = max(IT - strike_level_temp, 0),
+    n_call_precip = max(IR - strike_level_precip, 0)
+  ) %>%
+  ungroup()
+
+# Save Call Option Results
+write_csv(df_with_predictions, "call_options_combined.csv")
+
+# Step 8: Calculate Hedging Effectiveness and Paired T-Tests
+calculate_hedging_effectiveness <- function(df, call_col, fair_premium) {
+  df <- df %>%
+    group_by(district_no) %>%
+    mutate(
+      z = -cov(Y_t * 16, .data[[call_col]], use = "complete.obs") / var(.data[[call_col]], na.rm = TRUE)
+    ) %>%
+    ungroup() %>%
+    mutate(
+      revenue = Y_t * 16 + z * .data[[call_col]] - z * fair_premium
+    )
+  
+  results <- df %>%
+    group_by(district_no) %>%
+    summarise(
+      Std_Without = sd(Y_t * 16, na.rm = TRUE),
+      Std_With = sd(revenue, na.rm = TRUE),
+      Hedging_Effectiveness = (Std_Without - Std_With) / Std_Without * 100
+    )
+  
+  # Perform paired t-test
+  t_test_results <- t.test(df$Y_t * 16, df$revenue, paired = TRUE)
+  
+  list(
+    hedging_effectiveness = results,
+    t_test = t_test_results
+  )
+}
+
+# Calculate fair premiums for temperature and precipitation
+fair_premium_temp <- mean(df_with_predictions$n_call_temp, na.rm = TRUE) / (1 + 0.05)^16
+fair_premium_precip <- mean(df_with_predictions$n_call_precip, na.rm = TRUE) / (1 + 0.05)^16
+
+# Calculate hedging effectiveness and paired t-tests for temperature
+results_temp <- calculate_hedging_effectiveness(df_with_predictions, "n_call_temp", fair_premium_temp)
+hedging_temp <- results_temp$hedging_effectiveness
+t_test_temp <- results_temp$t_test
+
+# Calculate hedging effectiveness and paired t-tests for precipitation
+results_precip <- calculate_hedging_effectiveness(df_with_predictions, "n_call_precip", fair_premium_precip)
+hedging_precip <- results_precip$hedging_effectiveness
+t_test_precip <- results_precip$t_test
+
+# Display the results
+cat("\nHedging Effectiveness (Temperature):\n")
+print(hedging_temp)
+
+cat("\nPaired t-test Results (Temperature):\n")
+cat("t-value:", t_test_temp$statistic, "\n")
+cat("p-value:", t_test_temp$p.value, "\n")
+cat("95% Confidence Interval:", t_test_temp$conf.int, "\n")
+cat("Mean Difference:", t_test_temp$estimate, "\n")
+
+cat("\nHedging Effectiveness (Precipitation):\n")
+print(hedging_precip)
+
+cat("\nPaired t-test Results (Precipitation):\n")
+cat("t-value:", t_test_precip$statistic, "\n")
+cat("p-value:", t_test_precip$p.value, "\n")
+cat("95% Confidence Interval:", t_test_precip$conf.int, "\n")
+cat("Mean Difference:", t_test_precip$estimate, "\n")
+
+
+write.csv(hedging_temp, "hedging_effectiveness_temperature.csv", row.names = FALSE)
+write.csv(hedging_precip, "hedging_effectiveness_precipitation.csv", row.names = FALSE)
