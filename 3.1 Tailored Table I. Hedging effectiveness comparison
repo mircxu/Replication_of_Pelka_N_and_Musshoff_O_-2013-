@@ -1,37 +1,28 @@
 # Load required libraries
 library(tidyverse)
-library(gridExtra)
-library(grid)
 
 # Load all datasets
-precipitation <- read_csv('Hedging_Effectiveness_Precipitation.csv') %>% 
-  select(district_no, Hedging_Effectiveness) %>%
-  rename(Precipitation = Hedging_Effectiveness)
+precipitation <- read_csv('hedging_effectiveness_Precipitation.csv') %>% 
+  select(district, Hedging_Effectiveness) %>%
+  rename(district_no = district, Precipitation = Hedging_Effectiveness)
 
-temperature <- read_csv('Hedging_Effectiveness_Temperature.csv') %>% 
-  select(district_no, Hedging_Effectiveness) %>%
-  rename(Temperature = Hedging_Effectiveness)
+temperature <- read_csv('hedging_effectiveness_Temperature.csv') %>% 
+  select(district, Hedging_Effectiveness) %>%
+  rename(district_no = district, Temperature = Hedging_Effectiveness)
 
 mixed_diff <- read_csv('Tailored_hedging_different_stations.csv') %>% 
-  rename(district_no = district) %>%
-  select(district_no, Hedging_Effectiveness) %>%
-  rename(Mixed_Different = Hedging_Effectiveness)
+  rename(district_no = district, Mixed_Different = Hedging_Effectiveness) %>%
+  select(district_no, Mixed_Different)
 
 mixed_same <- read_csv('Tailored_hedging_same_stations.csv') %>% 
-  rename(district_no = district) %>%
-  select(district_no, Hedging_Effectiveness) %>%
-  rename(Mixed_Same = Hedging_Effectiveness)
-
-two_simple <- read_csv('hedging_effectiveness_two_simple_indices.csv') %>% 
-  select(district_no, Hedging_Effectiveness) %>%
-  rename(Two_Simple = Hedging_Effectiveness)
+  rename(district_no = district, Mixed_Same = Hedging_Effectiveness) %>%
+  select(district_no, Mixed_Same)
 
 # Step 1: Merge all datasets
 merged_summary <- precipitation %>%
   full_join(temperature, by = "district_no") %>%
   full_join(mixed_diff, by = "district_no") %>%
   full_join(mixed_same, by = "district_no") %>%
-  full_join(two_simple, by = "district_no") %>%
   arrange(district_no)
 
 # Replace NA with zeros
@@ -44,58 +35,47 @@ merged_summary_final <- merged_summary %>%
     `Precipitation-based index (%)` = Precipitation,
     `Temperature-based index (%)` = Temperature,
     `Mixed index at two stations (%)` = Mixed_Different,
-    `Mixed index at same station (%)` = Mixed_Same,
-    `Two simple indices (%)` = Two_Simple
+    `Mixed index at same station (%)` = Mixed_Same
   )
 
-# Step 2: Calculate summary statistics using reframe() and fix data types
-summary_stats <- reframe(
-  merged_summary_final,
+# Step 2: Calculate summary statistics
+summary_stats <- tibble(
   `District Number` = c("Average", "Minimum", "Maximum", "SD"),
   `Precipitation-based index (%)` = c(
-    mean(`Precipitation-based index (%)`, na.rm = TRUE),
-    min(`Precipitation-based index (%)`, na.rm = TRUE),
-    max(`Precipitation-based index (%)`, na.rm = TRUE),
-    sd(`Precipitation-based index (%)`, na.rm = TRUE)
+    mean(merged_summary_final$`Precipitation-based index (%)`, na.rm = TRUE),
+    min(merged_summary_final$`Precipitation-based index (%)`, na.rm = TRUE),
+    max(merged_summary_final$`Precipitation-based index (%)`, na.rm = TRUE),
+    sd(merged_summary_final$`Precipitation-based index (%)`, na.rm = TRUE)
   ),
   `Temperature-based index (%)` = c(
-    mean(`Temperature-based index (%)`, na.rm = TRUE),
-    min(`Temperature-based index (%)`, na.rm = TRUE),
-    max(`Temperature-based index (%)`, na.rm = TRUE),
-    sd(`Temperature-based index (%)`, na.rm = TRUE)
+    mean(merged_summary_final$`Temperature-based index (%)`, na.rm = TRUE),
+    min(merged_summary_final$`Temperature-based index (%)`, na.rm = TRUE),
+    max(merged_summary_final$`Temperature-based index (%)`, na.rm = TRUE),
+    sd(merged_summary_final$`Temperature-based index (%)`, na.rm = TRUE)
   ),
   `Mixed index at two stations (%)` = c(
-    mean(`Mixed index at two stations (%)`, na.rm = TRUE),
-    min(`Mixed index at two stations (%)`, na.rm = TRUE),
-    max(`Mixed index at two stations (%)`, na.rm = TRUE),
-    sd(`Mixed index at two stations (%)`, na.rm = TRUE)
+    mean(merged_summary_final$`Mixed index at two stations (%)`, na.rm = TRUE),
+    min(merged_summary_final$`Mixed index at two stations (%)`, na.rm = TRUE),
+    max(merged_summary_final$`Mixed index at two stations (%)`, na.rm = TRUE),
+    sd(merged_summary_final$`Mixed index at two stations (%)`, na.rm = TRUE)
   ),
   `Mixed index at same station (%)` = c(
-    mean(`Mixed index at same station (%)`, na.rm = TRUE),
-    min(`Mixed index at same station (%)`, na.rm = TRUE),
-    max(`Mixed index at same station (%)`, na.rm = TRUE),
-    sd(`Mixed index at same station (%)`, na.rm = TRUE)
-  ),
-  `Two simple indices (%)` = c(
-    mean(`Two simple indices (%)`, na.rm = TRUE),
-    min(`Two simple indices (%)`, na.rm = TRUE),
-    max(`Two simple indices (%)`, na.rm = TRUE),
-    sd(`Two simple indices (%)`, na.rm = TRUE)
+    mean(merged_summary_final$`Mixed index at same station (%)`, na.rm = TRUE),
+    min(merged_summary_final$`Mixed index at same station (%)`, na.rm = TRUE),
+    max(merged_summary_final$`Mixed index at same station (%)`, na.rm = TRUE),
+    sd(merged_summary_final$`Mixed index at same station (%)`, na.rm = TRUE)
   )
 )
 
-# Convert "District Number" to character for both tables
+# Convert "District Number" in merged_summary_final to character
 merged_summary_final <- merged_summary_final %>%
   mutate(`District Number` = as.character(`District Number`))
 
-summary_stats <- summary_stats %>%
-  mutate(`District Number` = as.character(`District Number`))
-
-# Step 3: Combine summary statistics and district data
+# Combine summary statistics and district data
 final_table <- bind_rows(summary_stats, merged_summary_final)
 
 # Step 4: Save the final table to a CSV file
 write_csv(final_table, "final_summary_statistics_with_top_summary.csv")
 
 # Notify user of successful completion
-cat("CSV file 'final_summary_statistics_with_top_summary.csv' has been successfully created without 'Column 1', 'Column 2', etc., labels.\n")
+cat("CSV file 'final_summary_statistics_with_top_summary.csv' has been successfully created.\n")
