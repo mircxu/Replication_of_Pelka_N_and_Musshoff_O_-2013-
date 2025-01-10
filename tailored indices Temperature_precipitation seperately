@@ -1,0 +1,202 @@
+# Load necessary libraries
+library(tidyverse)
+library(lubridate)
+library(broom)
+library(boot)
+
+# Step 1: Load Data
+final_data_with_station_IDs <- read.csv("final_data_with_station_IDs.csv")
+all_temp_results <- read.csv("all_temp_results.csv", header = TRUE, check.names = FALSE)
+all_precipitation_results <- read.csv("all_rain_results.csv", header = TRUE, check.names = FALSE)
+
+# Step 2: Prepare Data
+all_temp_results_melted <- all_temp_results %>%
+  gather(key = "stations_id", value = "IT", -year, -period) %>%
+  mutate(
+    stations_id = as.numeric(as.character(stations_id)),
+    period = as.character(period)
+  )
+
+all_precipitation_results_melted <- all_precipitation_results %>%
+  gather(key = "stations_id", value = "IR", -year, -period) %>%
+  mutate(
+    stations_id = as.numeric(as.character(stations_id)),
+    period = as.character(period)
+  )
+
+final_data_with_station_IDs <- final_data_with_station_IDs %>%
+  mutate(
+    year = as.numeric(year),
+    stations_id = as.numeric(stations_id)
+  )
+
+# Step 3: Define Accumulation Period Optimization
+periods <- c("3:3", "3:4", "3:5", "3:6", "3:7", "3:8", "3:9", "3:10")
+
+optimize_accumulation_period <- function(data, results, variable) {
+  best_period <- NA
+  best_corr <- -Inf
+  
+  for (period in periods) {
+    results_period <- results %>% filter(period == !!period)
+    merged_data <- data %>%
+      left_join(results_period, by = c("year", "stations_id")) %>%
+      filter(!is.na(.data[[variable]]), !is.na(value))
+    
+    if (nrow(merged_data) > 5) {  # Ensure enough data points for correlation
+      corr <- cor(merged_data$value, merged_data[[variable]], use = "complete.obs")
+      if (!is.na(corr) && corr > best_corr) {
+        best_corr <- corr
+        best_period <- period
+      }
+    }
+  }
+  
+  return(best_period)
+}
+
+# Step 4: Optimize Periods for Temperature and Precipitation
+optimized_periods_temp <- final_data_with_station_IDs %>%
+  group_split(district_no) %>%
+  map_df(~ {
+    district_data <- .x
+    optimal_period <- optimize_accumulation_period(district_data, all_temp_results_melted, "IT")
+    tibble(district_no = unique(district_data$district_no), optimal_period_temp = optimal_period)
+  })
+
+optimized_periods_precip <- final_data_with_station_IDs %>%
+  group_split(district_no) %>%
+  map_df(~ {
+    district_data <- .x
+    optimal_period <- optimize_accumulation_period(district_data, all_precipitation_results_melted, "IR")
+    tibble(district_no = unique(district_data$district_no), optimal_period_precip = optimal_period)
+  })
+
+# Merge Optimized Periods
+final_merged_data <- final_data_with_station_IDs %>%
+  left_join(optimized_periods_temp, by = "district_no") %>%
+  left_join(optimized_periods_precip, by = "district_no") %>%
+  left_join(all_temp_results_melted, by = c("year", "stations_id", "optimal_period_temp" = "period")) %>%
+  rename(IT = IT) %>%
+  left_join(all_precipitation_results_melted, by = c("year", "stations_id", "optimal_period_precip" = "period")) %>%
+  rename(IR = IR, Yield = value)
+
+# Step 5: Fit Quadratic Models
+models_stations_temp <- final_merged_data %>%
+  group_by(district_no, optimal_period_temp) %>%
+  do({
+    data <- .
+    if (nrow(data) > 0) {
+      model <- lm(Yield ~ IT + I(IT^2), data = data)
+      tidy(model) %>%
+        mutate(district_no = unique(data$district_no))
+    } else {
+      tibble()
+    }
+  }) %>%
+  ungroup()
+
+models_stations_precip <- final_merged_data %>%
+  group_by(district_no, optimal_period_precip) %>%
+  do({
+    data <- .
+    if (nrow(data) > 0) {
+      model <- lm(Yield ~ IR + I(IR^2), data = data)
+      tidy(model) %>%
+        mutate(district_no = unique(data$district_no))
+    } else {
+      tibble()
+    }
+  }) %>%
+  ungroup()
+
+# Step 6: Add Predictions and Calculate Strike Levels
+models_stations_temp_wider <- models_stations_temp %>%
+  select(term, estimate, district_no) %>%
+  pivot_wider(names_from = term, values_from = estimate) %>%
+  rename(
+    Intercept_temp = `(Intercept)`,
+    IT_coef = `IT`,
+    IT_squared_coef = `I(IT^2)`
+  )
+
+models_stations_precip_wider <- models_stations_precip %>%
+  select(term, estimate, district_no) %>%
+  pivot_wider(names_from = term, values_from = estimate) %>%
+  rename(
+    Intercept_precip = `(Intercept)`,
+    IR_coef = `IR`,
+    IR_squared_coef = `I(IR^2)`
+  )
+
+df_with_predictions <- final_merged_data %>%
+  left_join(models_stations_temp_wider, by = "district_no") %>%
+  mutate(
+    prediction_temp = Intercept_temp + IT_coef * IT + IT_squared_coef * (IT^2)
+  ) %>%
+  left_join(models_stations_precip_wider, by = "district_no") %>%
+  mutate(
+    prediction_precip = Intercept_precip + IR_coef * IR + IR_squared_coef * (IR^2)
+  )
+
+# Step 7: Calculate Call Option Payouts
+df_with_predictions <- df_with_predictions %>%
+  group_by(district_no) %>%
+  mutate(
+    strike_level_IT = mean(IT, na.rm = TRUE),
+    strike_level_IR = mean(IR, na.rm = TRUE)
+  ) %>%
+  rowwise() %>%
+  mutate(
+    n_call_IT = max(IT - strike_level_IT, 0),
+    n_call_IR = max(IR - strike_level_IR, 0)
+  ) %>%
+  ungroup()
+
+# Step 8: Bootstrap for Fair Premiums
+calculate_fair_premium <- function(payouts, r, years, n_iterations = 10000) {
+  mean_func <- function(data_, indices) {
+    return(mean(data_[indices], na.rm = TRUE))
+  }
+  
+  bootstrap_results <- boot(payouts, statistic = mean_func, R = n_iterations)
+  expected_payout <- mean(bootstrap_results$t)
+  fair_premium <- expected_payout / (1 + r)^years
+  return(fair_premium)
+}
+
+fair_premium_temp <- calculate_fair_premium(df_with_predictions$n_call_IT, r = 0.05, years = 15)
+fair_premium_precip <- calculate_fair_premium(df_with_predictions$n_call_IR, r = 0.05, years = 15)
+
+cat("Fair Premium (Temperature Call Option):", fair_premium_temp, "\n")
+cat("Fair Premium (Precipitation Call Option):", fair_premium_precip, "\n")
+
+# Step 9: Hedging Effectiveness for Temperature
+df_with_predictions <- df_with_predictions %>%
+  mutate(yt_price = Yield * 16) %>%
+  group_by(district_no) %>%
+  mutate(z_temp = -cov(yt_price, n_call_IT) / var(n_call_IT)) %>%
+  mutate(revenue_temp = yt_price + z_temp * n_call_IT - z_temp * fair_premium_temp)
+
+std_without_call_temp <- aggregate(yt_price ~ district_no, df_with_predictions, sd)
+std_with_call_temp <- aggregate(revenue_temp ~ district_no, df_with_predictions, sd)
+
+results_call_temp <- merge(std_without_call_temp, std_with_call_temp, by = "district_no")
+names(results_call_temp) <- c("district", "Std_Without", "Std_With")
+results_call_temp$Hedging_Effectiveness <- (results_call_temp$Std_Without - results_call_temp$Std_With) / results_call_temp$Std_Without * 100
+
+write.csv(results_call_temp, "hedging_effectiveness_temperature.csv", row.names = FALSE)
+
+# Step 10: Hedging Effectiveness for Precipitation
+df_with_predictions <- df_with_predictions %>%
+  mutate(z_precip = -cov(yt_price, n_call_IR) / var(n_call_IR)) %>%
+  mutate(revenue_precip = yt_price + z_precip * n_call_IR - z_precip * fair_premium_precip)
+
+std_without_call_precip <- aggregate(yt_price ~ district_no, df_with_predictions, sd)
+std_with_call_precip <- aggregate(revenue_precip ~ district_no, df_with_predictions, sd)
+
+results_call_precip <- merge(std_without_call_precip, std_with_call_precip, by = "district_no")
+names(results_call_precip) <- c("district", "Std_Without", "Std_With")
+results_call_precip$Hedging_Effectiveness <- (results_call_precip$Std_Without - results_call_precip$Std_With) / results_call_precip$Std_Without * 100
+
+write.csv(results_call_precip, "hedging_effectiveness_precipitation.csv", row.names = FALSE)
