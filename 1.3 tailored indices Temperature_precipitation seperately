@@ -165,8 +165,8 @@ calculate_fair_premium <- function(payouts, r, years, n_iterations = 10000) {
   return(fair_premium)
 }
 
-fair_premium_temp <- calculate_fair_premium(df_with_predictions$n_call_IT, r = 0.05, years = 15)
-fair_premium_precip <- calculate_fair_premium(df_with_predictions$n_call_IR, r = 0.05, years = 15)
+fair_premium_temp <- calculate_fair_premium(df_with_predictions$n_call_IT, r = 0.05, years = 16)
+fair_premium_precip <- calculate_fair_premium(df_with_predictions$n_call_IR, r = 0.05, years = 16)
 
 cat("Fair Premium (Temperature Call Option):", fair_premium_temp, "\n")
 cat("Fair Premium (Precipitation Call Option):", fair_premium_precip, "\n")
