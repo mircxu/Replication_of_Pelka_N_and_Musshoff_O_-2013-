@@ -43,7 +43,7 @@ merged_df <- data_df %>%
             by = c("district_no" = "kreis_code_in"))
 
 # Remove unnecessary columns and save as final dataset
-final_df <- merged_df %>%
+final_df <- merged_df %>% 
   select(-geobreite_temp, -geolaenge_temp, -geobreite_rain, -geolaenge_rain) %>%
   mutate(
     stations_id_rain = as.integer(stations_id_rain),
@@ -57,17 +57,19 @@ write.csv(final_df, "final_data_with_nearest_station_IDs.csv", row.names = FALSE
 cat("Updated dataset saved as 'final_data_with_nearest_station_IDs.csv'\n")
 
 # Step 6: Prepare Rain and Temperature Data for Merging
+# Precipitation data for accumulation in July and August
 rain_data <- allstations_rain %>%
   mutate(Date = as.Date(Stations_id, format = "%d.%m.%Y")) %>%
-  filter(month(Date) %in% c(7, 8)) %>%
+  filter(month(Date) %in% c(7, 8)) %>%  # Filter for July and August
   group_by(year = year(Date)) %>%
   summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>%
   pivot_longer(cols = -year, names_to = "stations_id", values_to = "IR") %>%
   mutate(stations_id = as.numeric(gsub("X", "", stations_id)))
 
+# Temperature data for June
 temp_data <- allstations_temp %>%
   mutate(Date = as.Date(Stations_id, format = "%d.%m.%Y")) %>%
-  filter(month(Date) == 6) %>%
+  filter(month(Date) == 6) %>%  # Filter for June
   group_by(year = year(Date)) %>%
   summarise(across(where(is.numeric), mean, na.rm = TRUE)) %>%
   pivot_longer(cols = -year, names_to = "stations_id", values_to = "IT") %>%
