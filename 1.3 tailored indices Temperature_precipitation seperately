@@ -1,202 +1,241 @@
-# Load necessary libraries
+# Load required libraries
 library(tidyverse)
-library(lubridate)
-library(broom)
 library(boot)
 
-# Step 1: Load Data
-final_data_with_station_IDs <- read.csv("final_data_with_station_IDs.csv")
-all_temp_results <- read.csv("all_temp_results.csv", header = TRUE, check.names = FALSE)
-all_precipitation_results <- read.csv("all_rain_results.csv", header = TRUE, check.names = FALSE)
+# Step 1: Load the data
+district_wi <- read_csv('district_wi.csv')
 
-# Step 2: Prepare Data
-all_temp_results_melted <- all_temp_results %>%
-  gather(key = "stations_id", value = "IT", -year, -period) %>%
-  mutate(
-    stations_id = as.numeric(as.character(stations_id)),
-    period = as.character(period)
-  )
-
-all_precipitation_results_melted <- all_precipitation_results %>%
-  gather(key = "stations_id", value = "IR", -year, -period) %>%
-  mutate(
-    stations_id = as.numeric(as.character(stations_id)),
-    period = as.character(period)
-  )
-
-final_data_with_station_IDs <- final_data_with_station_IDs %>%
-  mutate(
-    year = as.numeric(year),
-    stations_id = as.numeric(stations_id)
-  )
-
-# Step 3: Define Accumulation Period Optimization
-periods <- c("3:3", "3:4", "3:5", "3:6", "3:7", "3:8", "3:9", "3:10")
-
-optimize_accumulation_period <- function(data, results, variable) {
-  best_period <- NA
-  best_corr <- -Inf
-  
-  for (period in periods) {
-    results_period <- results %>% filter(period == !!period)
-    merged_data <- data %>%
-      left_join(results_period, by = c("year", "stations_id")) %>%
-      filter(!is.na(.data[[variable]]), !is.na(value))
-    
-    if (nrow(merged_data) > 5) {  # Ensure enough data points for correlation
-      corr <- cor(merged_data$value, merged_data[[variable]], use = "complete.obs")
-      if (!is.na(corr) && corr > best_corr) {
-        best_corr <- corr
-        best_period <- period
-      }
-    }
-  }
-  
-  return(best_period)
-}
-
-# Step 4: Optimize Periods for Temperature and Precipitation
-optimized_periods_temp <- final_data_with_station_IDs %>%
-  group_split(district_no) %>%
-  map_df(~ {
-    district_data <- .x
-    optimal_period <- optimize_accumulation_period(district_data, all_temp_results_melted, "IT")
-    tibble(district_no = unique(district_data$district_no), optimal_period_temp = optimal_period)
-  })
-
-optimized_periods_precip <- final_data_with_station_IDs %>%
-  group_split(district_no) %>%
-  map_df(~ {
-    district_data <- .x
-    optimal_period <- optimize_accumulation_period(district_data, all_precipitation_results_melted, "IR")
-    tibble(district_no = unique(district_data$district_no), optimal_period_precip = optimal_period)
-  })
-
-# Merge Optimized Periods
-final_merged_data <- final_data_with_station_IDs %>%
-  left_join(optimized_periods_temp, by = "district_no") %>%
-  left_join(optimized_periods_precip, by = "district_no") %>%
-  left_join(all_temp_results_melted, by = c("year", "stations_id", "optimal_period_temp" = "period")) %>%
-  rename(IT = IT) %>%
-  left_join(all_precipitation_results_melted, by = c("year", "stations_id", "optimal_period_precip" = "period")) %>%
-  rename(IR = IR, Yield = value)
-
-# Step 5: Fit Quadratic Models
-models_stations_temp <- final_merged_data %>%
-  group_by(district_no, optimal_period_temp) %>%
-  do({
-    data <- .
-    if (nrow(data) > 0) {
-      model <- lm(Yield ~ IT + I(IT^2), data = data)
-      tidy(model) %>%
-        mutate(district_no = unique(data$district_no))
-    } else {
-      tibble()
-    }
-  }) %>%
-  ungroup()
-
-models_stations_precip <- final_merged_data %>%
-  group_by(district_no, optimal_period_precip) %>%
-  do({
-    data <- .
-    if (nrow(data) > 0) {
-      model <- lm(Yield ~ IR + I(IR^2), data = data)
-      tidy(model) %>%
-        mutate(district_no = unique(data$district_no))
-    } else {
-      tibble()
-    }
-  }) %>%
-  ungroup()
-
-# Step 6: Add Predictions and Calculate Strike Levels
-models_stations_temp_wider <- models_stations_temp %>%
-  select(term, estimate, district_no) %>%
-  pivot_wider(names_from = term, values_from = estimate) %>%
-  rename(
-    Intercept_temp = `(Intercept)`,
-    IT_coef = `IT`,
-    IT_squared_coef = `I(IT^2)`
-  )
-
-models_stations_precip_wider <- models_stations_precip %>%
-  select(term, estimate, district_no) %>%
-  pivot_wider(names_from = term, values_from = estimate) %>%
-  rename(
-    Intercept_precip = `(Intercept)`,
-    IR_coef = `IR`,
-    IR_squared_coef = `I(IR^2)`
-  )
-
-df_with_predictions <- final_merged_data %>%
-  left_join(models_stations_temp_wider, by = "district_no") %>%
-  mutate(
-    prediction_temp = Intercept_temp + IT_coef * IT + IT_squared_coef * (IT^2)
-  ) %>%
-  left_join(models_stations_precip_wider, by = "district_no") %>%
-  mutate(
-    prediction_precip = Intercept_precip + IR_coef * IR + IR_squared_coef * (IR^2)
-  )
-
-# Step 7: Calculate Call Option Payouts
-df_with_predictions <- df_with_predictions %>%
+# Step 2: Calculate the strike levels for the temperature-based index
+district_wi <- district_wi %>%
   group_by(district_no) %>%
   mutate(
-    strike_level_IT = mean(IT, na.rm = TRUE),
-    strike_level_IR = mean(IR, na.rm = TRUE)
+    strike_level_IT = mean(IT_t, na.rm = TRUE)  # Strike level for temperature-based index
   ) %>%
+  ungroup()
+
+# Step 3: Calculate the call option payouts for the temperature-based index
+df_deriv_dist_call <- district_wi %>%
   rowwise() %>%
   mutate(
-    n_call_IT = max(IT - strike_level_IT, 0),
-    n_call_IR = max(IR - strike_level_IR, 0)
+    n_call_IT = max(IT_t - strike_level_IT, 0),  # Call option payout for temperature index
+    n_IT = n_call_IT  # Use only the call option for temperature index
+  )
+
+# Save the call option results for temperature index
+write_csv(df_deriv_dist_call, 'tailored_call_options_temperature.csv')
+
+# Display the first few rows of the result
+print(head(df_deriv_dist_call))
+
+# Step 4: Define the number of bootstrap iterations and parameters
+n_iterations <- 10000  # Number of bootstrap iterations
+r <- 0.05  # 5% risk-free rate
+years <- 15  # Time period from 2006 to 2021
+ci_level <- 0.95  # Confidence interval level
+beta <- (1 - ci_level) / 2
+
+# Step 5: Define the mean function for bootstrapping
+mean_func <- function(data_, indices) {
+  return(mean(data_[indices], na.rm = TRUE)) # Calculate the mean for the bootstrap sample
+}
+
+# Step 6: Perform bootstrap resampling for temperature index
+bootstrap_results_temperature <- boot(df_deriv_dist_call$n_IT, statistic = mean_func, R = n_iterations)
+
+# Step 7: Calculate the mean of the bootstrap samples for temperature index
+bootstrap_means_temperature <- bootstrap_results_temperature$t
+expected_payout_temperature <- mean(bootstrap_means_temperature)
+
+# Step 8: Discount the expected payout to present value using the risk-free rate
+fair_premium_temperature <- expected_payout_temperature / (1 + r) ^ years
+
+# Assign the fair premium to the dataframe
+df_deriv_dist_call$fair_premium_IT <- fair_premium_temperature
+
+# Plot histogram of bootstrap means for temperature-based index
+hist(bootstrap_means_temperature, breaks = 30, xlab = 'Mean Payout', border = 'white',
+     main = "Histogram of Bootstrap Means (Temperature-Based Index)")
+abline(v = fair_premium_temperature, col = 'red', lwd = 2)
+
+# Step 9: Calculate confidence intervals for temperature-based index
+ci_lo_temperature <- quantile(bootstrap_results_temperature$t, beta)
+ci_up_temperature <- quantile(bootstrap_results_temperature$t, ci_level + beta)
+
+cat("Bootstrap Mean (Temperature-Based Index):", fair_premium_temperature, "\n")
+cat(ci_level * 100, "% Confidence Interval (Temperature-Based Index):", ci_lo_temperature, ci_up_temperature, "\n")
+
+# Step 10: Calculate z and revenue for temperature index
+calc_revenue <- function(df_, column_name) {
+  cov_ <- cov(df_$yt_price, df_[[column_name]])
+  var_ <- var(df_[[column_name]])
+  z <- -cov_ / var_
+  return(z)
+}
+
+# Apply the revenue calculation for temperature-based index
+df_deriv_dist_call <- df_deriv_dist_call %>%
+  mutate(yt_price = Y_t * 16) %>%  # Calculate yt_price as Y_t * 16
+  group_by(district_no) %>%
+  mutate(
+    z_IT = calc_revenue(cur_data(), "n_IT"),
+    revenue_IT = Y_t * 16 + z_IT * n_IT - z_IT * fair_premium_IT
   ) %>%
   ungroup()
 
-# Step 8: Bootstrap for Fair Premiums
-calculate_fair_premium <- function(payouts, r, years, n_iterations = 10000) {
-  mean_func <- function(data_, indices) {
-    return(mean(data_[indices], na.rm = TRUE))
-  }
-  
-  bootstrap_results <- boot(payouts, statistic = mean_func, R = n_iterations)
-  expected_payout <- mean(bootstrap_results$t)
-  fair_premium <- expected_payout / (1 + r)^years
-  return(fair_premium)
+# Step 11: Calculate standard deviation and hedging effectiveness for temperature index
+std_without_IT <- aggregate(yt_price ~ district_no, df_deriv_dist_call, sd)
+std_with_IT <- aggregate(revenue_IT ~ district_no, df_deriv_dist_call, sd)
+
+# Combine the standard deviations into a single data frame
+results_IT <- merge(std_without_IT, std_with_IT, by = "district_no")
+names(results_IT) <- c("district_no", "Std_Without", "Std_With")
+
+# Calculate hedging effectiveness
+results_IT$Hedging_Effectiveness <- (results_IT$Std_Without - results_IT$Std_With) / 
+  results_IT$Std_Without * 100
+
+# Step 12: Save the results for temperature-based index
+write_csv(results_IT, 'hedging_effectiveness_temperature.csv')
+
+# Display the results
+print("Hedging effectiveness for Temperature-Based Index:")
+print(results_IT)
+
+# Final Summary
+cat("\nHedging effectiveness and fair premium calculation for Temperature-Based Index completed.\n")
+
+writeLines(
+  paste(
+    "Paired t-test results (Call Option):",
+    paste("t =", t_test_results_call$statistic),
+    paste("df =", t_test_results_call$parameter),
+    paste("p-value =", t_test_results_call$p.value),
+    paste("95% confidence interval =", 
+          paste(t_test_results_call$conf.int[1], t_test_results_call$conf.int[2], sep = ", ")),
+    paste("Mean difference =", t_test_results_call$estimate),
+    sep = "\n"
+  ),
+  con = "paired_t_test_tailored_temp.txt"
+)
+
+
+# Load required libraries
+library(tidyverse)
+library(boot)
+
+# Step 1: Load the data
+district_wi <- read_csv('district_wi.csv')
+
+# Step 2: Calculate the strike levels for the precipitation-based index
+district_wi <- district_wi %>%
+  group_by(district_no) %>%
+  mutate(
+    strike_level_IR = mean(IR_t, na.rm = TRUE)  # Strike level for precipitation-based index
+  ) %>%
+  ungroup()
+
+# Step 3: Calculate the call option payouts for the precipitation-based index
+df_deriv_dist_call <- district_wi %>%
+  rowwise() %>%
+  mutate(
+    n_call_IR = max(IR_t - strike_level_IR, 0),  # Call option payout for precipitation index
+    n_IR = n_call_IR  # Use only the call option for precipitation index
+  )
+
+# Save the call option results for precipitation index
+write_csv(df_deriv_dist_call, 'tailored_call_options_precipitation.csv')
+
+# Display the first few rows of the result
+print(head(df_deriv_dist_call))
+
+# Step 4: Define the number of bootstrap iterations and parameters
+n_iterations <- 10000  # Number of bootstrap iterations
+r <- 0.05  # 5% risk-free rate
+years <- 15  # Time period from 2006 to 2021
+ci_level <- 0.95  # Confidence interval level
+beta <- (1 - ci_level) / 2
+
+# Step 5: Define the mean function for bootstrapping
+mean_func <- function(data_, indices) {
+  return(mean(data_[indices], na.rm = TRUE)) # Calculate the mean for the bootstrap sample
 }
 
-fair_premium_temp <- calculate_fair_premium(df_with_predictions$n_call_IT, r = 0.05, years = 16)
-fair_premium_precip <- calculate_fair_premium(df_with_predictions$n_call_IR, r = 0.05, years = 16)
+# Step 6: Perform bootstrap resampling for precipitation index
+bootstrap_results_precipitation <- boot(df_deriv_dist_call$n_IR, statistic = mean_func, R = n_iterations)
 
-cat("Fair Premium (Temperature Call Option):", fair_premium_temp, "\n")
-cat("Fair Premium (Precipitation Call Option):", fair_premium_precip, "\n")
+# Step 7: Calculate the mean of the bootstrap samples for precipitation index
+bootstrap_means_precipitation <- bootstrap_results_precipitation$t
+expected_payout_precipitation <- mean(bootstrap_means_precipitation)
 
-# Step 9: Hedging Effectiveness for Temperature
-df_with_predictions <- df_with_predictions %>%
-  mutate(yt_price = Yield * 16) %>%
+# Step 8: Discount the expected payout to present value using the risk-free rate
+fair_premium_precipitation <- expected_payout_precipitation / (1 + r) ^ years
+
+# Assign the fair premium to the dataframe
+df_deriv_dist_call$fair_premium_IR <- fair_premium_precipitation
+
+# Plot histogram of bootstrap means for precipitation-based index
+hist(bootstrap_means_precipitation, breaks = 30, xlab = 'Mean Payout', border = 'white',
+     main = "Histogram of Bootstrap Means (Precipitation-Based Index)")
+abline(v = fair_premium_precipitation, col = 'red', lwd = 2)
+
+# Step 9: Calculate confidence intervals for precipitation-based index
+ci_lo_precipitation <- quantile(bootstrap_results_precipitation$t, beta)
+ci_up_precipitation <- quantile(bootstrap_results_precipitation$t, ci_level + beta)
+
+cat("Bootstrap Mean (Precipitation-Based Index):", fair_premium_precipitation, "\n")
+cat(ci_level * 100, "% Confidence Interval (Precipitation-Based Index):", ci_lo_precipitation, ci_up_precipitation, "\n")
+
+# Step 10: Calculate z and revenue for precipitation index
+calc_revenue <- function(df_, column_name) {
+  cov_ <- cov(df_$yt_price, df_[[column_name]])
+  var_ <- var(df_[[column_name]])
+  z <- -cov_ / var_
+  return(z)
+}
+
+# Apply the revenue calculation for precipitation-based index
+df_deriv_dist_call <- df_deriv_dist_call %>%
+  mutate(yt_price = Y_t * 16) %>%  # Calculate yt_price as Y_t * 16
   group_by(district_no) %>%
-  mutate(z_temp = -cov(yt_price, n_call_IT) / var(n_call_IT)) %>%
-  mutate(revenue_temp = yt_price + z_temp * n_call_IT - z_temp * fair_premium_temp)
+  mutate(
+    z_IR = calc_revenue(cur_data(), "n_IR"),
+    revenue_IR = Y_t * 16 + z_IR * n_IR - z_IR * fair_premium_IR
+  ) %>%
+  ungroup()
 
-std_without_call_temp <- aggregate(yt_price ~ district_no, df_with_predictions, sd)
-std_with_call_temp <- aggregate(revenue_temp ~ district_no, df_with_predictions, sd)
+# Step 11: Calculate standard deviation and hedging effectiveness for precipitation index
+std_without_IR <- aggregate(yt_price ~ district_no, df_deriv_dist_call, sd)
+std_with_IR <- aggregate(revenue_IR ~ district_no, df_deriv_dist_call, sd)
 
-results_call_temp <- merge(std_without_call_temp, std_with_call_temp, by = "district_no")
-names(results_call_temp) <- c("district", "Std_Without", "Std_With")
-results_call_temp$Hedging_Effectiveness <- (results_call_temp$Std_Without - results_call_temp$Std_With) / results_call_temp$Std_Without * 100
+# Combine the standard deviations into a single data frame
+results_IR <- merge(std_without_IR, std_with_IR, by = "district_no")
+names(results_IR) <- c("district_no", "Std_Without", "Std_With")
 
-write.csv(results_call_temp, "hedging_effectiveness_temperature.csv", row.names = FALSE)
+# Calculate hedging effectiveness
+results_IR$Hedging_Effectiveness <- (results_IR$Std_Without - results_IR$Std_With) / 
+  results_IR$Std_Without * 100
 
-# Step 10: Hedging Effectiveness for Precipitation
-df_with_predictions <- df_with_predictions %>%
-  mutate(z_precip = -cov(yt_price, n_call_IR) / var(n_call_IR)) %>%
-  mutate(revenue_precip = yt_price + z_precip * n_call_IR - z_precip * fair_premium_precip)
+# Step 12: Save the results for precipitation-based index
+write_csv(results_IR, 'hedging_effectiveness_precipitation.csv')
 
-std_without_call_precip <- aggregate(yt_price ~ district_no, df_with_predictions, sd)
-std_with_call_precip <- aggregate(revenue_precip ~ district_no, df_with_predictions, sd)
+# Display the results
+print("Hedging effectiveness for Precipitation-Based Index:")
+print(results_IR)
 
-results_call_precip <- merge(std_without_call_precip, std_with_call_precip, by = "district_no")
-names(results_call_precip) <- c("district", "Std_Without", "Std_With")
-results_call_precip$Hedging_Effectiveness <- (results_call_precip$Std_Without - results_call_precip$Std_With) / results_call_precip$Std_Without * 100
+# Final Summary
+cat("\nHedging effectiveness and fair premium calculation for Precipitation-Based Index completed.\n")
 
-write.csv(results_call_precip, "hedging_effectiveness_precipitation.csv", row.names = FALSE)
+writeLines(
+  paste(
+    "Paired t-test results (Call Option):",
+    paste("t =", t_test_results_call$statistic),
+    paste("df =", t_test_results_call$parameter),
+    paste("p-value =", t_test_results_call$p.value),
+    paste("95% confidence interval =", 
+          paste(t_test_results_call$conf.int[1], t_test_results_call$conf.int[2], sep = ", ")),
+    paste("Mean difference =", t_test_results_call$estimate),
+    sep = "\n"
+  ),
+  con = "paired_t_test_tailored_precitipation.txt"
+)
+
