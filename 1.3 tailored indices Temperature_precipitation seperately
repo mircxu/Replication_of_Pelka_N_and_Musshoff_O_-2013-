@@ -148,7 +148,7 @@ names(results_call) <- c("district", "Std_Without", "Std_With")
 results_call$Hedging_Effectiveness <- (results_call$Std_Without - results_call$Std_With) / results_call$Std_Without * 100
 
 # Save hedging effectiveness results
-write.csv(results_call, "hedging_effectiveness_temperature.csv", row.names = FALSE)
+write.csv(results_call, "hedging_effectiveness_Temperature.csv", row.names = FALSE)
 # Step 1: Load Data
 final_data_with_station_IDs <- read.csv("final_data_with_station_IDs.csv")
 all_temp_results <- read.csv("all_temp_results.csv", header = TRUE, check.names = FALSE)
