@@ -1,0 +1,68 @@
+# Load necessary libraries
+library(readr)
+library(ggplot2)
+library(reshape2)
+library(corrplot)
+
+# Load the dataset
+file_path <- "final_summary_statistics_with_top_summary.csv"  # Adjust as needed
+df <- read_csv(file_path)
+
+# Remove summary rows and extract numeric columns
+df_filtered <- df[-c(1:4), ]  # Assuming first 4 rows are summary statistics
+df_filtered <- df_filtered %>% mutate(across(everything(), as.numeric))
+
+# Extract individual indices
+precipitation_index <- df_filtered[[2]]  # Column for Precipitation-based index
+temperature_index <- df_filtered[[3]]    # Column for Temperature-based index
+mixed_two_stations <- df_filtered[[4]]   # Column for Mixed index at two stations
+mixed_same_station <- df_filtered[[5]]   # Column for Mixed index at same station
+
+# Create Combined Simple Index (Precipitation + Temperature)
+combined_simple_index <- precipitation_index + temperature_index
+
+### Perform Two-Sided t-tests ###
+t_test_combined_vs_mixed_two <- t.test(combined_simple_index, mixed_two_stations, paired = TRUE)
+t_test_combined_vs_mixed_same <- t.test(combined_simple_index, mixed_same_station, paired = TRUE)
+
+### Perform One-Sided t-tests (alternative hypothesis: Mixed index is greater) ###
+one_sided_test_combined_vs_mixed_two <- t.test(combined_simple_index, mixed_two_stations, paired = TRUE, alternative = "less")
+one_sided_test_combined_vs_mixed_same <- t.test(combined_simple_index, mixed_same_station, paired = TRUE, alternative = "less")
+
+# Print Test Results
+cat("Two-Sided T-test: Combined Simple Index vs Mixed Index (Two Stations)\n", t_test_combined_vs_mixed_two, "\n")
+cat("One-Sided T-test: Combined Simple Index vs Mixed Index (Two Stations)\n", one_sided_test_combined_vs_mixed_two, "\n")
+
+cat("Two-Sided T-test: Combined Simple Index vs Mixed Index (Same Station)\n", t_test_combined_vs_mixed_same, "\n")
+cat("One-Sided T-test: Combined Simple Index vs Mixed Index (Same Station)\n", one_sided_test_combined_vs_mixed_same, "\n")
+
+### Create Boxplot for Hedging Effectiveness ###
+# Prepare data for plotting
+df_plot <- data.frame(
+  Index_Type = rep(c("Precipitation-based", "Temperature-based", "Combined Simple", "Mixed (Two Stations)", "Mixed (Same Station)"), 
+                   each = length(precipitation_index)),
+  Hedging_Effectiveness = c(precipitation_index, temperature_index, combined_simple_index, mixed_two_stations, mixed_same_station)
+)
+
+# Generate Boxplot
+ggplot(df_plot, aes(x = Index_Type, y = Hedging_Effectiveness, fill = Index_Type)) +
+  geom_boxplot() +
+  labs(title = "Comparison of Hedging Effectiveness Across Indices", x = "Index Type", y = "Hedging Effectiveness (%)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+### Create Correlation Heatmap ###
+# Combine indices into a dataframe
+df_corr <- data.frame(
+  Precipitation = precipitation_index,
+  Temperature = temperature_index,
+  Combined_Simple = combined_simple_index,
+  Mixed_Two_Stations = mixed_two_stations,
+  Mixed_Same_Station = mixed_same_station
+)
+
+# Compute correlation matrix
+corr_matrix <- cor(df_corr, use = "complete.obs")
+
+# Plot correlation heatmap
+corrplot(corr_matrix, method = "color", type = "lower", addCoef.col = "black", tl.col = "black", tl.srt = 45, diag = FALSE)
