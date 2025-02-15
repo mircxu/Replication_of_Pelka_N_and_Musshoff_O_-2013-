@@ -1,0 +1,48 @@
+# Load necessary libraries
+library(readr)
+library(tidyverse)
+
+# Load the dataset
+file_path <- "final_summary_statistics_with_top_summary.csv"  # Adjust the file path
+df <- read_csv(file_path)
+
+# Remove summary rows and extract relevant data columns
+df_filtered <- df[-c(1:4), ]  # Assuming first 4 rows are summary statistics
+df_filtered <- df_filtered %>% mutate(across(everything(), as.numeric))
+
+# Extract individual indices
+precipitation_index <- df_filtered[[2]]  # Column for Precipitation-based index
+temperature_index <- df_filtered[[3]]    # Column for Temperature-based index
+mixed_two_stations <- df_filtered[[4]]   # Column for Mixed index at two stations
+mixed_same_station <- df_filtered[[5]]   # Column for Mixed index at same station
+
+# Perform pairwise t-tests
+t_test_temp <- t.test(precipitation_index, temperature_index, var.equal = FALSE)
+t_test_mixed_two <- t.test(precipitation_index, mixed_two_stations, var.equal = FALSE)
+t_test_mixed_same <- t.test(precipitation_index, mixed_same_station, var.equal = FALSE)
+t_test_temp_mixed_two <- t.test(temperature_index, mixed_two_stations, var.equal = FALSE)
+t_test_temp_mixed_same <- t.test(temperature_index, mixed_same_station, var.equal = FALSE)
+t_test_mixed_two_same <- t.test(mixed_two_stations, mixed_same_station, var.equal = FALSE)
+
+# Create a matrix to store p-values
+p_values_matrix <- matrix(c(
+  1.0, t_test_temp$p.value, t_test_mixed_two$p.value, t_test_mixed_same$p.value,
+  t_test_temp$p.value, 1.0, t_test_temp_mixed_two$p.value, t_test_temp_mixed_same$p.value,
+  t_test_mixed_two$p.value, t_test_temp_mixed_two$p.value, 1.0, t_test_mixed_two_same$p.value,
+  t_test_mixed_same$p.value, t_test_temp_mixed_same$p.value, t_test_mixed_two_same$p.value, 1.0
+), nrow = 4, byrow = TRUE)
+
+# Assign row and column names
+colnames(p_values_matrix) <- rownames(p_values_matrix) <- c(
+  "Precipitation-based index",
+  "Temperature-based index",
+  "Mixed index (Two Stations)",
+  "Mixed index (Same Station)"
+)
+
+# Convert to a data frame for display
+p_values_df <- as.data.frame(p_values_matrix)
+
+# Print the table
+print("P-values for T-tests:")
+print(round(p_values_df, 6))  # Round values for readability
