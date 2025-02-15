@@ -86,3 +86,51 @@ dev.off()
 grid.newpage()
 grid.rect(gp = gpar(fill = "white", col = NA))  # Force white background in plot
 grid.draw(table_plot)
+
+
+
+
+# Load necessary libraries
+library(gridExtra)
+library(grid)
+library(readr)
+library(dplyr)
+
+# Load the dataset
+file_path <- "final_summary_statistics_with_top_summary.csv"
+df <- read_csv(file_path)
+
+# Round numeric values to 1 decimal place
+df <- df %>%
+  mutate(across(where(is.numeric), ~ round(., 1)))
+
+# Convert numeric values to character to ensure proper formatting with .0
+df <- df %>%
+  mutate(across(where(is.numeric), as.character))
+
+# Create a properly formatted table for visualization
+table_plot <- tableGrob(df, rows = NULL)
+
+# Set white background, black text, and black borders for the full table
+for (i in seq_len(length(table_plot$grobs))) {
+  table_plot$grobs[[i]]$gp <- gpar(fontsize = 10, col = "black")  # Black text
+}
+
+# Add bold text and black borders for the header
+for (i in seq_len(ncol(df))) {
+  table_plot$grobs[[i]]$gp <- gpar(fontsize = 11, fontface = "bold", col = "black")  # Bold headers
+}
+
+# Save table as a **JPEG file with a fully white background**
+jpeg("summary_table.jpg", width = 3000, height = 2000, res = 20, bg = "white")
+grid.newpage()
+grid.draw(table_plot)
+dev.off()
+
+# Display the table in R (ensure white background)
+grid.newpage()
+grid.rect(gp = gpar(fill = "white", col = NA))  # Force white background
+grid.draw(table_plot)
+
+print("Table saved as summary_table.jpg")
+
