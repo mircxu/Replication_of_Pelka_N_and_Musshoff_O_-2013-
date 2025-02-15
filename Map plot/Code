@@ -1,0 +1,58 @@
+# Load necessary libraries
+library(ggplot2)
+library(ggmap)
+library(readr)
+library(readxl)
+library(tidyverse)
+library(png)
+library(grid)
+
+# Load the Germany map image
+map_path <- "Germany Map.png" 
+germany_map <- readPNG(map_path)
+
+# Load georeferenced district data
+geo_data <- read_excel("georeferencedata.xlsx")
+
+# Extract latitude and longitude from 'Geo Point' column
+geo_data <- geo_data %>%
+  separate(`Geo Point`, into = c("Latitude", "Longitude"), sep = ", ", convert = TRUE) %>%
+  select(`Kreis code`, `Kreis name`, Latitude, Longitude)
+
+# Load final data with station IDs
+final_data <- read_csv("final_data_with_station_IDs.csv")
+
+# Merge district coordinates with the final dataset
+final_data <- final_data %>%
+  left_join(geo_data, by = c("district_no" = "Kreis code"))
+
+# Debugging: Check for missing values in Latitude and Longitude
+print("Checking for missing district coordinates...")
+print(sum(is.na(final_data$Latitude)))
+print(sum(is.na(final_data$Longitude)))
+
+# Remove any rows with missing coordinates (if necessary)
+final_data <- final_data %>%
+  drop_na(Latitude, Longitude)
+
+# Plot the Germany map with stations and district locations
+ggplot() +
+  # Add the background map image
+  annotation_custom(rasterGrob(germany_map, width = unit(1, "npc"), height = unit(1, "npc")), 
+                    xmin = 5.5, xmax = 15.5, ymin = 47, ymax = 55) +
+  
+  # Plot weather stations in red
+  geom_point(data = final_data, aes(x = geolaenge, y = geobreite), 
+             color = "red", size = 1.5, alpha = 0.8, shape = 16) +  
+  
+  # Plot district centers in blue (ensuring they are plotted on top)
+  geom_point(data = final_data, aes(x = Longitude, y = Latitude), 
+             color = "blue", size = 1.5, alpha = 0.8, shape = 16) +  
+  
+  # Labels, formatting, and fixing aspect ratio
+  labs(title = "Weather Stations and District Centers in Germany",
+       x = "Longitude", y = "Latitude") +
+  theme_minimal() +
+  
+  # Adjust aspect ratio for a better fit
+  coord_fixed(ratio = 1.2)
