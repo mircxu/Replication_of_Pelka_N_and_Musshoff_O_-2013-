@@ -1,0 +1,8 @@
+Metric (Replication),Precipitation-based index (%),Temperature-based index (%),Mixed index at two stations (%),Mixed index at same station (%)
+Average value (Optimal),6.98179193,9.397370138,21.19118697,20.91812534
+Average value (Standardized),2.680840505,4.035370811,10.9191334,11.78331253
+p-value of the t-test,8.93E-14,1.87E-17,3.03E-39,9.59E-29
+Metric (Original),Precipitation-based index (%),Temperature-based index (%),Mixed index at two stations (%),Mixed index at same station (%)
+Average value (Optimal),15.7,12.4,22.2,20.1
+Average value (Standardized),6.2,9.7,13.5,11.7
+p-value of the t-test,<0.001,<0.001,<0.001,<0.001
