@@ -1,0 +1,18 @@
+# Load required libraries
+library(readr)
+library(kableExtra)
+library(dplyr)
+
+# Load the CSV file
+file_path <- "final_summary_statistics_with_top_summary_st (2).csv"
+df <- read_csv(file_path)
+
+# Format all numeric columns to one decimal place
+df <- df %>% mutate(across(where(is.numeric), ~ format(round(., 1), nsmall = 1)))
+
+# Create a styled table with black outlines
+kable(df, format = "html", align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                full_width = FALSE, position = "center") %>%
+  row_spec(0, bold = TRUE, background = "white", color = "black") %>%
+  column_spec(1:ncol(df), border_left = TRUE, border_right = TRUE)
