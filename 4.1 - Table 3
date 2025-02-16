@@ -67,3 +67,46 @@ write_csv(comparison_results, "comparison_optimal_vs_standardized_with_p_values.
 
 # Notify the user
 cat("Comparison table saved as 'comparison_optimal_vs_standardized_with_p_values.csv' in the working directory.\n")
+
+# Load necessary libraries
+library(gridExtra)
+library(grid)
+library(readr)
+library(dplyr)
+
+# Load the dataset
+file_path <- "comparison_optimal_vs_standardized_with_p_values.csv"
+df <- read_csv(file_path)
+
+# Convert numeric columns to formatted values
+df <- df %>%
+  mutate(across(where(is.numeric), ~ ifelse(. < 0.001, "<0.001", sprintf("%.1f", .))))
+
+# Create a table with a white background and black borders
+table_plot <- tableGrob(df, rows = NULL)
+
+# Set formatting: black text, bold headers, and table borders
+for (i in seq_len(length(table_plot$grobs))) {
+  table_plot$grobs[[i]]$gp <- gpar(fontsize = 10, col = "black")  # Black text
+}
+
+# Add bold headers
+for (i in seq_len(ncol(df))) {
+  table_plot$grobs[[i]]$gp <- gpar(fontsize = 11, fontface = "bold", col = "black")
+}
+
+# Save as a **high-resolution JPEG** with a white background
+jpeg("p_values_table.jpg", width = 4000, height = 3000, res = 300, bg = "white")
+grid.newpage()
+grid.draw(table_plot)
+dev.off()
+
+# Display table in R with white background
+grid.newpage()
+grid.rect(gp = gpar(fill = "white", col = NA))  # Force white background
+grid.draw(table_plot)
+
+print("Table saved as p_values_table.jpg")
+
+
+
