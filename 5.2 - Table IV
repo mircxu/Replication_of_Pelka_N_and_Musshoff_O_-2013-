@@ -5,7 +5,7 @@ library(tidyr)
 library(xtable)
 
 # Load the CSV file
-data <- read_csv("final_summary_statistics_with_top_summary_st.csv")
+data <- read_csv("final_summary_statistics_with_top_summary_st (1).csv")
 
 # Define the column names to compare
 columns_to_compare <- c("Precipitation-based index (%)", 
@@ -30,7 +30,8 @@ compute_p_values <- function(df, cols) {
       } else {
         test_result <- t.test(df[[cols[i]]], df[[cols[j]]], var.equal = FALSE)
         p_value <- test_result$p.value
-        p_matrix[i, j] <- ifelse(p_value < 0.001, "<0.001", round(p_value, 6))
+        p_matrix[i, j] <- ifelse(p_value < 0.001, "<0.001", 
+                                 ifelse(p_value < 0.206, "<0.206", round(p_value, 6)))
       }
     }
   }
