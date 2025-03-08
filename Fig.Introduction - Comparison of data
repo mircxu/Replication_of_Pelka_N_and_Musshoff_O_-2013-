@@ -1,0 +1,10 @@
+# Create the data frame
+study_comparison <- data.frame(
+  Study = c("Original Study", "Replication Study"),
+  Location = c("Central Germany", "Germany"),
+  Date = c("1995 and 2009", "2006 and 2021"),
+  De_trended_Yield = c(91.10, 75.49)  # Yield in dt/ha
+)
+
+# Print the table
+print(study_comparison)
