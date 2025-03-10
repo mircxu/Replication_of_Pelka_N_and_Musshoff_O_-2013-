@@ -1,0 +1,44 @@
+# Load necessary libraries
+library(dplyr)
+library(readr)
+library(openxlsx)
+
+# 1. Load the dataset
+data <- read_csv("filtered_data_raw.csv")
+
+# 2. Categorize each entry by region based on NUTS1 code (first 3 characters of nuts_id)
+data$NUTS1 <- substr(data$nuts_id, 1, 3)
+data$region <- with(data, ifelse(NUTS1 %in% c("DEF", "DE9", "DE5", "DE6"), "North",
+                                 ifelse(NUTS1 %in% c("DE1", "DE2"), "South",
+                                        ifelse(NUTS1 %in% c("DEA", "DEB", "DEC"), "West",
+                                               ifelse(NUTS1 %in% c("DED", "DEE", "DEG", "DE4", "DE8", "DE3"), "East",
+                                                      ifelse(NUTS1 %in% c("DE7"), "Central", NA))))))
+
+# Remove any rows with NA region
+data_region <- subset(data, !is.na(region))
+
+# 3. Calculate mean yield and standard deviation for each region
+region_stats <- data_region %>%
+  group_by(region) %>%
+  summarize(
+    mean_yield = mean(value),
+    sd_yield   = sd(value)
+  )
+
+# 4. Fit a linear regression of yield vs. year for each region to get the trend slope
+region_trends <- data_region %>%
+  group_by(region) %>%
+  do({
+    model <- lm(value ~ year, data = .)
+    data.frame(trend_slope = coef(model)[2])
+  })
+
+# 5. Merge the summary statistics and trend results
+region_summary <- merge(region_stats, region_trends, by = "region")
+
+# 6. Save the results to an Excel file
+output_file <- "Yield_Statistics_Germany.xlsx"
+write.xlsx(region_summary, output_file)
+
+# 7. Print confirmation message
+print(paste("Results saved to", output_file))
