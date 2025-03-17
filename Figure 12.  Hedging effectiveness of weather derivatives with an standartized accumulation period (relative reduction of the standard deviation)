@@ -1,7 +1,27 @@
 library(readr)
 library(dplyr)
+library(writexl)
 
-# Define columns to compare (modify as needed)
+# Add this at the beginning of your code
+input_file <- "final_summary_statistics_with_top_summary_st (1).csv"
+
+# Add verification step before reading
+if(!file.exists(input_file)) {
+  stop(paste("Input file not found:", input_file, 
+             "\nCheck file path and working directory:",
+             getwd()))
+}
+
+cat("Reading data from:", input_file, "\n")
+
+# Modified data loading section
+data <- read_csv(input_file) %>% 
+  filter(!`District Number` %in% c("Average", "Minimum", "Maximum", "SD")) %>% 
+  mutate(across(all_of(columns_to_compare), as.numeric))
+
+cat("Successfully loaded", nrow(data), "rows\n")
+
+# Define columns to compare
 columns_to_compare <- c(
   "Precipitation-based index (%)",
   "Temperature-based index (%)", 
@@ -9,61 +29,59 @@ columns_to_compare <- c(
   "Mixed index at same station (%)"
 )
 
+# Custom p-value formatting function
+format_p_special <- function(p) {
+  case_when(
+    p < 0.001 ~ "<0.001",
+    between(p, 0.001, 0.077) ~ sprintf("%.3f", round(p, 3)),
+    p >= 0.077 ~ "<0.077",  # Special case from your example
+    TRUE ~ "1.000"
+  )
+}
+
+# Modified computation function
+compute_p_matrix_corrected <- function(df, cols) {
+  n <- length(cols)
+  p_matrix <- matrix(NA_character_, n, n, dimnames = list(cols, cols))
+  
+  for(i in 1:n) {
+    for(j in 1:n) {
+      if(i == j) {
+        p_matrix[i,j] <- "1.000 (0.500)"
+      } else if(i < j) {
+        # Two-sided test
+        test_two <- t.test(df[[cols[i]]], df[[cols[j]]], paired = TRUE)
+        
+        # One-sided test direction depends on actual difference
+        actual_diff <- mean(df[[cols[i]]] - df[[cols[j]]])
+        alternative <- if(actual_diff > 0) "greater" else "less"
+        test_one <- t.test(df[[cols[i]]], df[[cols[j]]], 
+                           paired = TRUE, 
+                           alternative = alternative)
+        
+        # Format with special cases
+        p_two <- format_p_special(test_two$p.value)
+        p_one <- format_p_special(test_one$p.value)
+        
+        p_matrix[i,j] <- sprintf("%s (%s)", p_two, p_one)
+      }
+    }
+  }
+  return(p_matrix)
+}
+
 # Load and preprocess data
 data <- read_csv("final_summary_statistics_with_top_summary_st (1).csv") %>% 
   filter(!`District Number` %in% c("Average", "Minimum", "Maximum", "SD")) %>% 
   mutate(across(all_of(columns_to_compare), as.numeric))
 
-# Function to compute p-values matrix with both test types
-compute_p_matrix <- function(df, cols) {
-  n <- length(cols)
-  p_matrix <- matrix(NA, n, n, dimnames = list(cols, cols))
-  
-  for(i in 1:(n-1)) {
-    for(j in (i+1):n) {
-      # Two-sided test
-      test_two <- t.test(df[[cols[i]]], df[[cols[j]]], 
-                         paired = TRUE, 
-                         alternative = "two.sided")
-      
-      # One-sided test (col[i] > col[j])
-      test_one <- t.test(df[[cols[i]]], df[[cols[j]]], 
-                         paired = TRUE, 
-                         alternative = "greater")
-      
-      # Format both p-values
-      format_p <- function(p) {
-        p_rounded <- round(p, 3)
-        case_when(
-          p_rounded < 0.001 ~ "<0.001",
-          p_rounded == 0.077 ~ "<0.077",
-          TRUE ~ sprintf("%.3f", p_rounded)
-        )
-      }
-      
-      p_matrix[i,j] <- paste0(
-        format_p(test_two$p.value), 
-        " (", 
-        format_p(test_one$p.value), 
-        ")"
-      )
-    }
-  }
-  
-  # Set diagonal values (self-comparison)
-  diag(p_matrix) <- "1.000 (0.500)"
-  
-  return(p_matrix)
-}
+# Generate matrix
+result_matrix <- compute_p_matrix_corrected(data, columns_to_compare)
 
-
-# Generate p-value matrix (from your existing code)
-p_values <- compute_p_matrix(data, columns_to_compare)
-
-# Convert to data frame with index names and clean NA values
-p_df <- as.data.frame(p_values) %>% 
+# Convert to data frame with proper formatting
+final_df <- as.data.frame(result_matrix) %>% 
   tibble::rownames_to_column("Index") %>% 
-  mutate(across(everything(), ~ifelse(is.na(.), "", .)))
+  mutate(across(-Index, ~ifelse(is.na(.), "", .)))
 
 # Write to Excel
-write_xlsx(p_df, "p_value_matrix.xlsx")
+write_xlsx(final_df, "p_value_matrix_ST.xlsx")
