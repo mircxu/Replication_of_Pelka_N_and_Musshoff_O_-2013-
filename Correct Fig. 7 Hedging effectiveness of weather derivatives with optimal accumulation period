@@ -68,25 +68,25 @@ filtered_data <- summary_data %>%
 general_stats <- data.frame(
   Region = "General",
   Statistic = c("Average", "Minimum", "Maximum", "SD"),
-  `Precipitation-based index` = c(
+  `Precipitation-based index (%)` = c(
     mean(filtered_data[[precip_col]], na.rm = TRUE),
     min(filtered_data[[precip_col]], na.rm = TRUE),
     max(filtered_data[[precip_col]], na.rm = TRUE),
     sd(filtered_data[[precip_col]], na.rm = TRUE)
   ),
-  `Temperature-based index` = c(
+  `Temperature-based index (%)` = c(
     mean(filtered_data[[temp_col]], na.rm = TRUE),
     min(filtered_data[[temp_col]], na.rm = TRUE),
     max(filtered_data[[temp_col]], na.rm = TRUE),
     sd(filtered_data[[temp_col]], na.rm = TRUE)
   ),
-  `Mixed index at two stations` = c(
+  `Mixed index at two stations (%)` = c(
     mean(filtered_data[[mixed_two_col]], na.rm = TRUE),
     min(filtered_data[[mixed_two_col]], na.rm = TRUE),
     max(filtered_data[[mixed_two_col]], na.rm = TRUE),
     sd(filtered_data[[mixed_two_col]], na.rm = TRUE)
   ),
-  `Mixed index at same station` = c(
+  `Mixed index at same station (%)` = c(
     mean(filtered_data[[mixed_same_col]], na.rm = TRUE),
     min(filtered_data[[mixed_same_col]], na.rm = TRUE),
     max(filtered_data[[mixed_same_col]], na.rm = TRUE),
@@ -140,10 +140,10 @@ region_summary <- filtered_data %>%
     values_from = "Value"
   ) %>%
   rename(
-    `Precipitation-based index` = Precipitation,
-    `Temperature-based index` = Temperature,
-    `Mixed index at two stations` = Mixed_Two_Stations,
-    `Mixed index at same station` = Mixed_Same_Station
+    `Precipitation-based index (%)` = Precipitation,
+    `Temperature-based index (%)` = Temperature,
+    `Mixed index at two stations (%)` = Mixed_Two_Stations,
+    `Mixed index at same station (%)` = Mixed_Same_Station
   ) %>%
   rename(Region = Region_Name)
 
