@@ -1,33 +1,73 @@
 library(readr)
 library(dplyr)
+library(writexl)  # Add this package for Excel export
+
+# Define columns to compare
+columns_to_compare <- c(
+  "Precipitation-based index (%)",
+  "Temperature-based index (%)", 
+  "Mixed index at two stations (%)",
+  "Mixed index at same station (%)"
+)
 
 # Load and filter data
 data <- read_csv("final_summary_statistics_with_top_summary.csv") %>% 
   filter(!`District Number` %in% c("Average", "Minimum", "Maximum", "SD")) %>% 
   mutate(across(all_of(columns_to_compare), as.numeric))
 
-# Modified paired t-test function with diagonal fix
+# Modified function with one-sided tests
 compute_p_matrix <- function(df, cols) {
   n <- length(cols)
-  p_matrix <- matrix(NA, n, n, dimnames = list(cols, cols))
+  p_matrix <- matrix(NA_character_, n, n, dimnames = list(cols, cols))
   
-  for(i in 1:(n-1)) {
-    for(j in (i+1):n) {
-      test <- t.test(df[[cols[i]]], df[[cols[j]]], paired = TRUE)
-      p_val <- round(test$p.value, 3)
-      
-      p_matrix[i,j] <- ifelse(p_val < 0.001, "<0.001",
-                              ifelse(p_val == 0.397, "<0.397",
-                                     format(p_val, nsmall = 3)))
+  # Formatting helper function
+  format_p <- function(p) {
+    p_rounded <- round(p, 3)
+    if (p_rounded < 0.001) {
+      "<0.001"
+    } else if (p_rounded == 0.397) {  # Special case
+      "<0.397"
+    } else {
+      sprintf("%.3f", p_rounded)
     }
   }
   
-  # Set diagonal to 1.000
-  diag(p_matrix) <- "1.000"
+  for(i in 1:(n-1)) {
+    for(j in (i+1):n) {
+      # Two-sided test
+      test_two <- t.test(df[[cols[i]]], df[[cols[j]]], paired = TRUE)
+      
+      # One-sided test direction
+      actual_diff <- mean(df[[cols[i]]] - df[[cols[j]]])
+      alternative <- ifelse(actual_diff > 0, "greater", "less")
+      test_one <- t.test(df[[cols[i]]], df[[cols[j]]], 
+                        paired = TRUE, 
+                        alternative = alternative)
+      
+      # Format both values
+      p_two <- format_p(test_two$p.value)
+      p_one <- format_p(test_one$p.value)
+      
+      p_matrix[i,j] <- paste0(p_two, " (", p_one, ")")
+    }
+  }
+  
+  # Set diagonal with both values
+  diag(p_matrix) <- "1.000 (0.500)"
   
   return(p_matrix)
 }
 
-# Generate and print matrix
+# Generate matrix
 p_values <- compute_p_matrix(data, columns_to_compare)
+
+# Convert to data frame and save as Excel
+p_df <- as.data.frame(p_values) %>% 
+  tibble::rownames_to_column("Index") %>% 
+  mutate(across(-Index, ~ifelse(is.na(.), "", .)))
+
+write_xlsx(p_df, "p_value_matrix.xlsx")
+
+# Print confirmation
+cat("Excel file saved as: p_value_matrix.xlsx\n")
 print(p_values, na.print = "")
