@@ -1,0 +1,37 @@
+library(readr)
+library(dplyr)
+library(openxlsx)
+
+# Load the datasets
+summary_data <- read_csv("final_summary_statistics_with_top_summary (3).csv")
+final_data <- read_csv("final_data_with_temp_station_IDs.csv")
+
+# Convert district numbers to the same type
+summary_data$`District Number` <- as.numeric(summary_data$`District Number`)
+final_data$district_no <- as.numeric(final_data$district_no)
+
+# Extract unique District Numbers from the summary dataset
+district_numbers <- unique(summary_data$`District Number`)
+
+# Filter the final data based on district_no and keep unique matches
+matched_data <- final_data %>% 
+  filter(district_no %in% district_numbers) %>% 
+  select(district_no, nuts_id) %>% 
+  distinct(district_no, .keep_all = TRUE)  # Ensure each district_no appears only once
+
+# Merge the nuts_id back into summary data without removing the first rows
+summary_data <- summary_data %>% 
+  left_join(matched_data, by = c("District Number" = "district_no"))
+
+# Ensure the first rows remain as "Average", "Minimum", "Maximum", "SD" if they were replaced
+summary_data$nuts_id[1:4] <- c("Average", "Minimum", "Maximum", "SD")
+
+# Save updated summary data to a new file
+output_summary_file <- "updated_final_summary_statistics.xlsx"
+write.xlsx(summary_data, output_summary_file)
+
+# Save matched data to an Excel file
+output_file <- "matched_nuts_data.xlsx"
+write.xlsx(matched_data, output_file)
+
+cat("Matching complete. Download the files: matched_nuts_data.xlsx and updated_final_summary_statistics.xlsx")
