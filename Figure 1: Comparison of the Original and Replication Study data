@@ -1,0 +1,50 @@
+# Load necessary libraries
+library(openxlsx)
+library(ggplot2)
+library(gridExtra)
+
+# Simplified data frame
+study_comparison_simple <- data.frame(
+  Characteristic = c(
+    "Location", "Time Period", "Number of Observations", "Average Farm Size", 
+    "Distance Between Units", "Soil Conditions", "Average Annual Yield Increase (Trend)",
+    "De-trended Avg. Winter Wheat Yield", "Weather Data Source",
+    "Accumulation Periods (Weather Indices)",
+    "Hedging Effectiveness (Precipitation Index)",
+    "Hedging Effectiveness (Temperature Index)",
+    "Hedging Effectiveness (Mixed Index)"
+  ),
+  Original_Study = c(
+    "Central Germany", "1995–2009", "32 farms", "~60 ha", "6–226 km",
+    "Sandy, Clay-rich soils", "0.44 dt/ha per year",
+    "91.10 dt/ha", "DWD (5 stations)", 
+    "Temp: June, Precip: July–August", "Avg: 15.7%",
+    "Avg: 12.4%", "Avg: 22.2%"
+  ),
+  Replication_Study = c(
+    "Germany (District-level)", "2006–2021", "397 districts (259,816 obs.)", 
+    "District-level, not farm-level", "District-level analysis",
+    "Diverse soils across districts", "0.21 dt/ha per year",
+    "75.49 dt/ha", "DWD (163 Temp, 190 Precip stations)",
+    "Temp: June, Precip: July–August", "Avg: 2.68%",
+    "Avg: 4.04%", 
+    "Two stations avg: 10.92%; Same station avg: 11.78%"
+  )
+)
+
+# Save as Excel file
+excel_file_path <- "study_comparison_simple.xlsx"
+write.xlsx(study_comparison_simple, excel_file_path, rowNames = FALSE)
+
+# Generate table plot
+table_plot_simple <- tableGrob(study_comparison_simple, rows = NULL)
+
+# Define file path for image
+image_path_simple <- "study_comparison_simple.png"
+
+# Save the table plot as an image
+ggsave(image_path_simple, table_plot_simple, width = 12, height = 7)
+
+# Confirmation messages
+cat("Excel file saved as", excel_file_path, "\n")
+cat("Table image saved as", image_path_simple, "\n")
