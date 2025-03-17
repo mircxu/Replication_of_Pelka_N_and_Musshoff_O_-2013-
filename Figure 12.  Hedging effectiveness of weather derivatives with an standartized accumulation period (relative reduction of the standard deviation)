@@ -23,13 +23,13 @@ compute_p_matrix <- function(df, cols) {
     for(j in (i+1):n) {
       # Two-sided test
       test_two <- t.test(df[[cols[i]]], df[[cols[j]]], 
-                        paired = TRUE, 
-                        alternative = "two.sided")
+                         paired = TRUE, 
+                         alternative = "two.sided")
       
       # One-sided test (col[i] > col[j])
       test_one <- t.test(df[[cols[i]]], df[[cols[j]]], 
-                        paired = TRUE, 
-                        alternative = "greater")
+                         paired = TRUE, 
+                         alternative = "greater")
       
       # Format both p-values
       format_p <- function(p) {
@@ -56,8 +56,14 @@ compute_p_matrix <- function(df, cols) {
   return(p_matrix)
 }
 
-# Generate p-value matrix
+
+# Generate p-value matrix (from your existing code)
 p_values <- compute_p_matrix(data, columns_to_compare)
 
-# Print formatted matrix
-print(p_values, na.print = "", quote = FALSE)
+# Convert to data frame with index names and clean NA values
+p_df <- as.data.frame(p_values) %>% 
+  tibble::rownames_to_column("Index") %>% 
+  mutate(across(everything(), ~ifelse(is.na(.), "", .)))
+
+# Write to Excel
+write_xlsx(p_df, "p_value_matrix.xlsx")
