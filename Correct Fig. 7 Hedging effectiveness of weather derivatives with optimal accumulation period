@@ -1,0 +1,163 @@
+library(dplyr)
+library(openxlsx)
+library(tidyr)
+library(readr)
+
+# Load the datasets
+summary_data <- read_csv("final_summary_statistics_with_top_summary.csv")
+final_data <- read_csv("final_data_with_temp_station_IDs.csv")
+
+# Remove the first four rows explicitly (Average, Minimum, Maximum, SD)
+summary_data_clean <- summary_data[-c(1:4), ]
+
+# Convert district numbers to numeric
+summary_data_clean$`District Number` <- as.numeric(summary_data_clean$`District Number`)
+final_data$district_no <- as.numeric(final_data$district_no)
+
+# Extract unique District Numbers from the cleaned summary dataset
+district_numbers <- unique(summary_data_clean$`District Number`)
+
+# Filter the final data based on district_no and keep unique matches
+matched_data <- final_data %>% 
+  filter(district_no %in% district_numbers) %>% 
+  select(district_no, nuts_id) %>% 
+  distinct(district_no, .keep_all = TRUE)
+
+# Merge nuts_id back into the cleaned summary data
+summary_data_updated <- summary_data_clean %>% 
+  left_join(matched_data, by = c("District Number" = "district_no"))
+
+# Save updated summary data to a new file
+output_summary_file <- "updated_final_summary_statistics.xlsx"
+write.xlsx(summary_data_updated, output_summary_file)
+
+# Save matched data to an Excel file
+output_file <- "matched_nuts_data.xlsx"
+write.xlsx(matched_data, output_file)
+
+cat("Matching complete. Files saved: matched_nuts_data.xlsx, updated_final_summary_statistics.xlsx")
+
+# Load your updated summary data
+summary_data <- read.xlsx("updated_final_summary_statistics.xlsx")
+colnames(summary_data) <- make.names(colnames(summary_data))
+
+# Define NUTS1 mapping
+nuts1_mapping <- data.frame(
+  NUTS1_Code = c("DE1", "DE2", "DE3", "DE4", "DE5", "DE6", "DE7", "DE8", 
+                 "DE9", "DEA", "DEB", "DEC", "DED", "DEE", "DEF", "DEG"),
+  Region_Name = c("Baden-Württemberg", "Bavaria", "Berlin", "Brandenburg", 
+                  "Bremen", "Hamburg", "Hesse", "Mecklenburg-Vorpommern", 
+                  "Lower Saxony", "North Rhine-Westphalia", "Rhineland-Palatinate", 
+                  "Saarland", "Saxony", "Saxony-Anhalt", "Schleswig-Holstein", "Thuringia")
+)
+
+# Identify column names
+district_col <- grep("District", colnames(summary_data), value = TRUE)
+nuts_col <- grep("nuts", colnames(summary_data), value = TRUE, ignore.case = TRUE)
+precip_col <- grep("Precipitation.based.index", colnames(summary_data), value = TRUE)
+temp_col <- grep("Temperature.based.index", colnames(summary_data), value = TRUE)
+mixed_two_col <- grep("Mixed.index.at.two.stations", colnames(summary_data), value = TRUE)
+mixed_same_col <- grep("Mixed.index.at.same.station", colnames(summary_data), value = TRUE)
+
+# Filter and convert data to numeric
+filtered_data <- summary_data %>% 
+  filter(!(.[[district_col]] %in% c("Average", "Minimum", "Maximum", "SD"))) %>%
+  mutate(across(c(precip_col, temp_col, mixed_two_col, mixed_same_col), as.numeric))
+
+# Calculate General statistics FIRST (from entire dataset, equal weighting)
+general_stats <- data.frame(
+  Region = "General",
+  Statistic = c("Average", "Minimum", "Maximum", "SD"),
+  `Precipitation-based index` = c(
+    mean(filtered_data[[precip_col]], na.rm = TRUE),
+    min(filtered_data[[precip_col]], na.rm = TRUE),
+    max(filtered_data[[precip_col]], na.rm = TRUE),
+    sd(filtered_data[[precip_col]], na.rm = TRUE)
+  ),
+  `Temperature-based index` = c(
+    mean(filtered_data[[temp_col]], na.rm = TRUE),
+    min(filtered_data[[temp_col]], na.rm = TRUE),
+    max(filtered_data[[temp_col]], na.rm = TRUE),
+    sd(filtered_data[[temp_col]], na.rm = TRUE)
+  ),
+  `Mixed index at two stations` = c(
+    mean(filtered_data[[mixed_two_col]], na.rm = TRUE),
+    min(filtered_data[[mixed_two_col]], na.rm = TRUE),
+    max(filtered_data[[mixed_two_col]], na.rm = TRUE),
+    sd(filtered_data[[mixed_two_col]], na.rm = TRUE)
+  ),
+  `Mixed index at same station` = c(
+    mean(filtered_data[[mixed_same_col]], na.rm = TRUE),
+    min(filtered_data[[mixed_same_col]], na.rm = TRUE),
+    max(filtered_data[[mixed_same_col]], na.rm = TRUE),
+    sd(filtered_data[[mixed_same_col]], na.rm = TRUE)
+  ),
+  check.names = FALSE
+)
+
+# Now add region info after computing General stats
+filtered_data <- filtered_data %>%
+  mutate(Region = substr(.[[nuts_col]], 1, 3)) %>% 
+  left_join(nuts1_mapping, by = c("Region" = "NUTS1_Code"))
+
+# Region-wise statistics (equal weighting)
+region_summary <- filtered_data %>%
+  group_by(Region_Name) %>%
+  summarise(
+    Precipitation_Mean = mean(.data[[precip_col]], na.rm = TRUE),
+    Precipitation_Min = min(.data[[precip_col]], na.rm = TRUE),
+    Precipitation_Max = max(.data[[precip_col]], na.rm = TRUE),
+    Precipitation_SD = sd(.data[[precip_col]], na.rm = TRUE),
+    Temperature_Mean = mean(.data[[temp_col]], na.rm = TRUE),
+    Temperature_Min = min(.data[[temp_col]], na.rm = TRUE),
+    Temperature_Max = max(.data[[temp_col]], na.rm = TRUE),
+    Temperature_SD = sd(.data[[temp_col]], na.rm = TRUE),
+    Mixed_Two_Stations_Mean = mean(.data[[mixed_two_col]], na.rm = TRUE),
+    Mixed_Two_Stations_Min = min(.data[[mixed_two_col]], na.rm = TRUE),
+    Mixed_Two_Stations_Max = max(.data[[mixed_two_col]], na.rm = TRUE),
+    Mixed_Two_Stations_SD = sd(.data[[mixed_two_col]], na.rm = TRUE),
+    Mixed_Same_Station_Mean = mean(.data[[mixed_same_col]], na.rm = TRUE),
+    Mixed_Same_Station_Min = min(.data[[mixed_same_col]], na.rm = TRUE),
+    Mixed_Same_Station_Max = max(.data[[mixed_same_col]], na.rm = TRUE),
+    Mixed_Same_Station_SD = sd(.data[[mixed_same_col]], na.rm = TRUE)
+  ) %>%
+  pivot_longer(
+    cols = -Region_Name,
+    names_to = c("Index", "Statistic"),
+    names_pattern = "(.*)_(Mean|Min|Max|SD)$",
+    values_to = "Value"
+  ) %>%
+  mutate(
+    Statistic = case_when(
+      Statistic == "Mean" ~ "Average",
+      Statistic == "Min" ~ "Minimum",
+      Statistic == "Max" ~ "Maximum",
+      TRUE ~ Statistic
+    )
+  ) %>%
+  pivot_wider(
+    names_from = "Index",
+    values_from = "Value"
+  ) %>%
+  rename(
+    `Precipitation-based index` = Precipitation,
+    `Temperature-based index` = Temperature,
+    `Mixed index at two stations` = Mixed_Two_Stations,
+    `Mixed index at same station` = Mixed_Same_Station
+  ) %>%
+  rename(Region = Region_Name)
+
+# Combine general and region-wise stats
+final_output <- bind_rows(general_stats, region_summary) %>%
+  arrange(factor(Region, levels = c("General", unique(region_summary$Region))), Statistic)
+
+# Round values to two decimals
+final_output[,3:6] <- round(final_output[,3:6], 2)
+
+# Save to Excel
+write.xlsx(final_output, "summary_statistics_combined_tailored.xlsx", rowNames = FALSE)
+
+# Display final output
+print(final_output)
+
+cat("Summary table saved successfully.")
