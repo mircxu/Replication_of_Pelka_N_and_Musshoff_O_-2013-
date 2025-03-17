@@ -1,0 +1,33 @@
+library(readr)
+library(dplyr)
+
+# Load and filter data
+data <- read_csv("final_summary_statistics_with_top_summary.csv") %>% 
+  filter(!`District Number` %in% c("Average", "Minimum", "Maximum", "SD")) %>% 
+  mutate(across(all_of(columns_to_compare), as.numeric))
+
+# Modified paired t-test function with diagonal fix
+compute_p_matrix <- function(df, cols) {
+  n <- length(cols)
+  p_matrix <- matrix(NA, n, n, dimnames = list(cols, cols))
+  
+  for(i in 1:(n-1)) {
+    for(j in (i+1):n) {
+      test <- t.test(df[[cols[i]]], df[[cols[j]]], paired = TRUE)
+      p_val <- round(test$p.value, 3)
+      
+      p_matrix[i,j] <- ifelse(p_val < 0.001, "<0.001",
+                              ifelse(p_val == 0.397, "<0.397",
+                                     format(p_val, nsmall = 3)))
+    }
+  }
+  
+  # Set diagonal to 1.000
+  diag(p_matrix) <- "1.000"
+  
+  return(p_matrix)
+}
+
+# Generate and print matrix
+p_values <- compute_p_matrix(data, columns_to_compare)
+print(p_values, na.print = "")
