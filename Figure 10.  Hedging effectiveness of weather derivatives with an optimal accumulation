@@ -4,7 +4,7 @@ library(dplyr)
 library(kableExtra)
 
 # Load the CSV file
-file_path <- "4.1 - Table 3 data (1).csv"
+file_path <- "4.1 - Table 3 data.csv"
 df <- read_csv(file_path)
 
 # Select relevant rows 
