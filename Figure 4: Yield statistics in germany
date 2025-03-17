@@ -1,0 +1,50 @@
+# Load necessary libraries
+library(dplyr)
+library(readr)
+library(openxlsx)
+
+# 1. Load the dataset
+data <- read_csv("filtered_data_raw.csv")
+
+# 2. Define NUTS1 mapping explicitly
+nuts1_mapping <- data.frame(
+  NUTS1_Code = c("DE1", "DE2", "DE3", "DE4", "DE5", "DE6", "DE7", "DE8",
+                 "DE9", "DEA", "DEB", "DEC", "DED", "DEE", "DEF", "DEG"),
+  Region_Name = c("Baden-Württemberg", "Bavaria", "Berlin", "Brandenburg",
+                  "Bremen", "Hamburg", "Hesse", "Mecklenburg-Vorpommern",
+                  "Lower Saxony", "North Rhine-Westphalia", "Rhineland-Palatinate",
+                  "Saarland", "Saxony", "Saxony-Anhalt", "Schleswig-Holstein", "Thuringia")
+)
+
+# 3. Categorize each entry by region based on NUTS1 code (first 3 characters of nuts_id)
+data$NUTS1 <- substr(data$nuts_id, 1, 3)
+data <- left_join(data, nuts1_mapping, by = c("NUTS1" = "NUTS1_Code"))
+
+# Remove any rows with NA region
+data_region <- subset(data, !is.na(Region_Name))
+
+# 4. Calculate mean yield and standard deviation for each region
+region_stats <- data_region %>%
+  group_by(Region_Name) %>%
+  summarize(
+    mean_yield = mean(value, na.rm = TRUE),
+    sd_yield   = sd(value, na.rm = TRUE)
+  )
+
+# 5. Fit a linear regression of yield vs. year for each region to get the trend slope
+region_trends <- data_region %>%
+  group_by(Region_Name) %>%
+  do({
+    model <- lm(value ~ year, data = .)
+    data.frame(trend_slope = coef(model)[2])
+  })
+
+# 6. Merge the summary statistics and trend results
+region_summary <- merge(region_stats, region_trends, by = "Region_Name")
+
+# 7. Save the results to an Excel file
+output_file <- "Yield_Statistics_Germany.xlsx"
+write.xlsx(region_summary, output_file)
+
+# 8. Print confirmation message
+print(paste("Results saved to", output_file))
