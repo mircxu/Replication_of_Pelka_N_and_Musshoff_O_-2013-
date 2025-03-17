@@ -1,0 +1,29 @@
+# Load required packages
+if (!require("writexl")) install.packages("writexl")
+library(readr)
+library(dplyr)
+library(writexl)
+
+# Read both datasets
+tailored <- read_csv("final_summary_statistics_with_top_summary_st.csv")
+standardized <- read_csv("final_summary_statistics_with_top_summary.csv")
+
+# Process data with proper numeric formatting
+comparison_table <- bind_rows(
+  tailored[1:4, ] %>% 
+    mutate(Approach = "Tailored approach") %>%
+    rename(Metric = `District Number`),
+  standardized[1:4, ] %>% 
+    mutate(Approach = "Standardized approach") %>%
+    rename(Metric = `District Number`)
+) %>%
+  select(Approach, Metric, everything()) %>%
+  mutate(across(-c(Approach, Metric), ~ round(as.numeric(.), 2)))
+
+# Save as Excel file
+write_xlsx(
+  list("Comparison" = comparison_table),
+  "insurance_approach_comparison.xlsx"
+)
+
+message("Excel file saved as: ", file.path(getwd(), "insurance_approach_comparison.xlsx"))
