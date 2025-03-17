@@ -1,0 +1,127 @@
+# Load required libraries
+library(dplyr)
+library(openxlsx)
+library(tidyr)
+library(readr)
+
+# Load provided dataset
+summary_data <- read_csv("final_summary_statistics_with_top_summary_st.csv")
+final_data <- read_csv("final_data_with_temp_station_IDs.csv")  # Ensure this file is in your working directory
+
+# Clean summary data by removing the first four rows explicitly
+summary_data_clean <- summary_data[-c(1:4), ]
+
+# Convert relevant columns to numeric
+summary_data_clean$`District Number` <- as.numeric(summary_data_clean$`District Number`)
+final_data$district_no <- as.numeric(final_data$district_no)
+
+# Extract unique District Numbers
+district_numbers <- unique(summary_data_clean$`District Number`)
+
+# Match NUTS IDs to district numbers
+matched_data <- final_data %>%
+  filter(district_no %in% district_numbers) %>%
+  select(district_no, nuts_id) %>%
+  distinct(district_no, .keep_all = TRUE)
+
+# Merge nuts_id back into the cleaned summary data
+summary_data_updated <- summary_data_clean %>%
+  left_join(matched_data, by = c("District Number" = "district_no"))
+
+# Save updated summary data
+write.xlsx(summary_data_updated, "updated_final_summary_statistics.xlsx")
+
+# Save matched data separately
+write.xlsx(matched_data, "matched_nuts_data.xlsx")
+
+cat("Matching complete. Files saved: matched_nuts_data.xlsx, updated_final_summary_statistics.xlsx\n")
+
+# Reload updated summary data and standardize column names
+summary_data <- read.xlsx("updated_final_summary_statistics.xlsx")
+colnames(summary_data) <- make.names(colnames(summary_data))
+
+# Define NUTS1 mapping explicitly
+nuts1_mapping <- data.frame(
+  NUTS1_Code = c("DE1", "DE2", "DE3", "DE4", "DE5", "DE6", "DE7", "DE8",
+                 "DE9", "DEA", "DEB", "DEC", "DED", "DEE", "DEF", "DEG"),
+  Region_Name = c("Baden-Württemberg", "Bavaria", "Berlin", "Brandenburg",
+                  "Bremen", "Hamburg", "Hesse", "Mecklenburg-Vorpommern",
+                  "Lower Saxony", "North Rhine-Westphalia", "Rhineland-Palatinate",
+                  "Saarland", "Saxony", "Saxony-Anhalt", "Schleswig-Holstein", "Thuringia")
+)
+
+# Identify relevant columns dynamically
+district_col <- grep("District", colnames(summary_data), value = TRUE)
+nuts_col <- grep("nuts", colnames(summary_data), ignore.case = TRUE, value = TRUE)
+precip_col <- grep("Precipitation.based.index", colnames(summary_data), value = TRUE)
+temp_col <- grep("Temperature.based.index", colnames(summary_data), value = TRUE)
+mixed_two_col <- grep("Mixed.index.at.two.stations", colnames(summary_data), value = TRUE)
+mixed_same_col <- grep("Mixed.index.at.same.station", colnames(summary_data), value = TRUE)
+
+# Filter out non-numeric summary rows and convert columns to numeric
+filtered_data <- summary_data %>%
+  filter(!(.[[district_col]] %in% c("Average", "Minimum", "Maximum", "SD"))) %>%
+  mutate(across(c(precip_col, temp_col, mixed_two_col, mixed_same_col), as.numeric))
+
+# General statistics computation
+general_stats <- data.frame(
+  Region = "General",
+  Statistic = c("Average", "Minimum", "Maximum", "SD"),
+  `Precipitation-based index (%)` = c(mean(filtered_data[[precip_col]], na.rm = TRUE),
+                                      min(filtered_data[[precip_col]], na.rm = TRUE),
+                                      max(filtered_data[[precip_col]], na.rm = TRUE),
+                                      sd(filtered_data[[precip_col]], na.rm = TRUE)),
+  `Temperature-based index (%)` = c(mean(filtered_data[[temp_col]], na.rm = TRUE),
+                                    min(filtered_data[[temp_col]], na.rm = TRUE),
+                                    max(filtered_data[[temp_col]], na.rm = TRUE),
+                                    sd(filtered_data[[temp_col]], na.rm = TRUE)),
+  `Mixed index at two stations (%)` = c(mean(filtered_data[[mixed_two_col]], na.rm = TRUE),
+                                        min(filtered_data[[mixed_two_col]], na.rm = TRUE),
+                                        max(filtered_data[[mixed_two_col]], na.rm = TRUE),
+                                        sd(filtered_data[[mixed_two_col]], na.rm = TRUE)),
+  `Mixed index at same station (%)` = c(mean(filtered_data[[mixed_same_col]], na.rm = TRUE),
+                                        min(filtered_data[[mixed_same_col]], na.rm = TRUE),
+                                        max(filtered_data[[mixed_same_col]], na.rm = TRUE),
+                                        sd(filtered_data[[mixed_same_col]], na.rm = TRUE)),
+  check.names = FALSE
+)
+
+# Add region information
+filtered_data <- filtered_data %>%
+  mutate(Region = substr(.[[nuts_col]], 1, 3)) %>%
+  left_join(nuts1_mapping, by = c("Region" = "NUTS1_Code"))
+
+# Region-wise summary statistics
+region_summary <- filtered_data %>%
+  group_by(Region_Name) %>%
+  summarise(across(c(precip_col, temp_col, mixed_two_col, mixed_same_col),
+                   list(Average = ~mean(., na.rm = TRUE),
+                        Minimum = ~min(., na.rm = TRUE),
+                        Maximum = ~max(., na.rm = TRUE),
+                        SD = ~sd(., na.rm = TRUE)))) %>%
+  pivot_longer(-Region_Name,
+               names_to = c("Index", "Statistic"),
+               names_sep = "_(?=[^_]+$)",
+               values_to = "Value") %>%
+  pivot_wider(names_from = "Index", values_from = "Value") %>%
+  rename(Region = Region_Name,
+         `Precipitation-based index (%)` = !!precip_col,
+         `Temperature-based index (%)` = !!temp_col,
+         `Mixed index at two stations (%)` = !!mixed_two_col,
+         `Mixed index at same station (%)` = !!mixed_same_col)
+
+# Combine general and regional summaries into final table
+final_output <- bind_rows(general_stats, region_summary) %>%
+  arrange(factor(Region, levels = c("General", unique(region_summary$Region))),
+          factor(Statistic, levels = c("Average", "Minimum", "Maximum", "SD")))
+
+# Round values for clarity
+final_output[, 3:6] <- round(final_output[, 3:6], 2)
+
+# Save final summary statistics
+write.xlsx(final_output, "summary_statistics_combined_ST.xlsx", rowNames = FALSE)
+
+# Display final output
+print(final_output)
+
+cat("Summary table saved successfully as summary_statistics_combined_tailored.xlsx\n")
