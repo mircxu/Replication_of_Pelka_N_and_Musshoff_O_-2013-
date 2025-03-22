@@ -1,4 +1,83 @@
 # Load necessary libraries
+library(tidyverse)
+
+# Load datasets
+optimal_summary <- read_csv('final_summary_statistics_with_top_summary.csv')
+standardized_summary <- read_csv('final_summary_statistics_with_top_summary_st.csv')
+
+# Define the indices to compare
+comparison_columns <- c(
+  "Precipitation-based index (%)",
+  "Temperature-based index (%)",
+  "Mixed index at two stations (%)",
+  "Mixed index at same station (%)"
+)
+
+# Extract the "Average" rows from each dataset
+average_row_optimal <- optimal_summary %>% filter(`District Number` == "Average")
+average_row_standardized <- standardized_summary %>% filter(`District Number` == "Average")
+
+# Calculate p-values using a t-test
+comparison_results <- tibble(
+  `Metric` = c("Average value (Optimal)", "Average value (Standardized)", "p-value of the t-test"),
+  `Precipitation-based index (%)` = c(
+    average_row_optimal$`Precipitation-based index (%)`,
+    average_row_standardized$`Precipitation-based index (%)`,
+    t.test(
+      optimal_summary$`Precipitation-based index (%)`, 
+      standardized_summary$`Precipitation-based index (%)`, 
+      var.equal = TRUE
+    )$p.value
+  ),
+  `Temperature-based index (%)` = c(
+    average_row_optimal$`Temperature-based index (%)`,
+    average_row_standardized$`Temperature-based index (%)`,
+    t.test(
+      optimal_summary$`Temperature-based index (%)`, 
+      standardized_summary$`Temperature-based index (%)`, 
+      var.equal = TRUE
+    )$p.value
+  ),
+  `Mixed index at two stations (%)` = c(
+    average_row_optimal$`Mixed index at two stations (%)`,
+    average_row_standardized$`Mixed index at two stations (%)`,
+    t.test(
+      optimal_summary$`Mixed index at two stations (%)`, 
+      standardized_summary$`Mixed index at two stations (%)`, 
+      var.equal = TRUE
+    )$p.value
+  ),
+  `Mixed index at same station (%)` = c(
+    average_row_optimal$`Mixed index at same station (%)`,
+    average_row_standardized$`Mixed index at same station (%)`,
+    t.test(
+      optimal_summary$`Mixed index at same station (%)`, 
+      standardized_summary$`Mixed index at same station (%)`, 
+      var.equal = TRUE
+    )$p.value
+  )
+)
+
+# Format the numeric values and p-values appropriately
+comparison_results <- comparison_results %>%
+  mutate(across(all_of(comparison_columns), 
+                ~ case_when(
+                  row_number() %in% 1:2 ~ sprintf("%.2f", .),
+                  row_number() == 3 ~ if_else(. < 0.001, 
+                                              "<0.001", 
+                                              sprintf("%.3f", .))
+                )))
+
+# Save the table to a CSV file
+write_csv(comparison_results, "comparison_optimal_vs_standardized_with_p_values.csv")
+
+# Notify the user
+cat("Comparison table saved as 'comparison_optimal_vs_standardized_with_p_values.csv' in the working directory.\n")
+
+
+#I Merge data with original data in excel, named it 4.1 - Table 3 data.csv and then visualized
+
+# Load necessary libraries
 
 library(readr)
 library(dplyr)
