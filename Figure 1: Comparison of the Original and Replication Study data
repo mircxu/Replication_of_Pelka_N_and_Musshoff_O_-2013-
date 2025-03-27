@@ -22,10 +22,10 @@ study_comparison_simple <- data.frame(
     "Avg: 12.4%", "Avg: 22.2%"
   ),
   Replication_Study = c(
-    "Germany (District-level)", "2006–2021", "397 districts (259,816 obs.)", 
+    "Germany (District-level)", "2006–2021", "397 districts", 
     "District-level, not farm-level", "District-level analysis",
     "Diverse soils across districts", "0.21 dt/ha per year",
-    "75.49 dt/ha", "DWD (163 Temp, 190 Precip stations)",
+    "75.49 dt/ha", "DWD (258 Temp, 160 Precip stations)",
     "Temp: June, Precip: July–August", "Avg: 2.68%",
     "Avg: 4.04%", 
     "Two stations avg: 10.92%; Same station avg: 11.78%"
